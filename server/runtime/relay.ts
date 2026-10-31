@@ -18,7 +18,7 @@ type RelayMessage = Awaited<ReturnType<RelayAgentClient["messages"]["get"]>>;
 export type RelayClient = Pick<RelayAgentClient, "id" | "handle" | "sendMessage"> & {
   onDirectMessage: (handler: (message: RelayMessage) => void) => () => void;
   inbox: Pick<RelayAgentClient["inbox"], "get">;
-  messages: Pick<RelayAgentClient["messages"], "listDirect" | "markRead">;
+  messages: Pick<RelayAgentClient["messages"], "listDirect" | "markRead" | "get">;
 };
 
 export function configuredRelayTokens(): Record<string, string> {
@@ -61,8 +61,14 @@ async function getClient(organizationId: string): Promise<RelayClient> {
   let client = clients.get(organizationId);
   if (!client) {
     const scopedRelay = new AgentRelay({ workspaceKey, agentToken: apiToken, baseUrl: process.env.RELAY_BASE_URL || undefined });
+    const recipientReader = new AgentRelay({ agentToken: apiToken, baseUrl: process.env.RELAY_BASE_URL || undefined });
     client = scopedRelay.workspace.reconnect({ apiToken }).then((agent) => ({
       ...agent,
+      messages: {
+        get: (messageId: string) => recipientReader.messages.get(messageId),
+        listDirect: (input) => agent.messages.listDirect(input),
+        markRead: (messageId: string) => agent.messages.markRead(messageId),
+      },
       onDirectMessage: (handler: (message: RelayMessage) => void) => scopedRelay.addListener("dm.received", (event) => handler(event.message)),
     }));
     clients.set(organizationId, client);
@@ -119,6 +125,21 @@ export function createRelayTransport(
     };
   }
 
+  async function decodeIncoming(
+    raw: RelayMessage,
+    recipient: RelayClient,
+    partner: RelayClient,
+    organizationId: string,
+    partnerId: string,
+  ) {
+    if (raw.from.id !== partner.id || !raw.messageId) return null;
+    const message = typeof raw.metadata?.caseId === "string" && typeof raw.metadata?.eventId === "string"
+      ? raw
+      : await recipient.messages.get(raw.messageId);
+    if (message.messageId !== raw.messageId) return null;
+    return decode(message, recipient, partner, organizationId, partnerId);
+  }
+
   async function replayUnread(
     recipient: RelayClient,
     partner: RelayClient,
@@ -130,7 +151,7 @@ export function createRelayTransport(
     for (const conversation of inbox.unreadDms) {
       const messages = await recipient.messages.listDirect({ conversationId: conversation.conversationId, limit: conversation.unreadCount });
       for (const raw of [...messages].reverse()) {
-        const message = decode(raw, recipient, partner, organizationId, partnerId);
+        const message = await decodeIncoming(raw, recipient, partner, organizationId, partnerId);
         if (!message || !(await onMessage(message))) continue;
         await recipient.messages.markRead(message.messageId);
       }
@@ -189,9 +210,9 @@ export function createRelayTransport(
       const stopped = new Promise<void>((resolve, reject) => { stop = resolve; fail = reject; });
       const handle = async (message: ReceivedRelayMessage) => { await input.onMessage(message); return true; };
       const unsubscribe = recipient.onDirectMessage((received) => {
-        const message = decode(received, recipient, partner, input.organizationId, input.partnerId);
-        if (!message) return;
         queue = queue.then(async () => {
+          const message = await decodeIncoming(received, recipient, partner, input.organizationId, input.partnerId);
+          if (!message) return;
           await input.onMessage(message);
           await recipient.messages.markRead(message.messageId);
         });

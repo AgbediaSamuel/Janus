@@ -55,7 +55,7 @@ import {
   type RelayClient,
 } from "../server/runtime/relay";
 
-test("Relay validates authenticated sender and acknowledges only after successful persistence", async () => {
+test("Relay validates authenticated sender and marks messages read only after successful persistence", async () => {
   const calls: string[] = [];
   const message = {
     id: "message-1",
@@ -84,6 +84,7 @@ test("Relay validates authenticated sender and acknowledges only after successfu
       get: async () => ({ unreadChannels: [], mentions: [], recentReactions: [], unreadDms: [{ conversationId: "conversation-1", from: "vendor", unreadCount: 2 }] }),
     },
     messages: {
+      get: async () => message,
       listDirect: async () => ([
           {
             ...message, id: "attacker", from: { id: "attacker-agent" },
@@ -91,7 +92,7 @@ test("Relay validates authenticated sender and acknowledges only after successfu
           message,
         ]),
       markRead: async () => {
-        calls.push("ack");
+        calls.push("read");
         return { messageId: message.messageId };
       },
     },
@@ -114,7 +115,7 @@ test("Relay validates authenticated sender and acknowledges only after successfu
     },
   });
   assert.equal(messages.length, 1);
-  assert.deepEqual(calls, ["persist", "ack"]);
+  assert.deepEqual(calls, ["persist", "read"]);
   calls.length = 0;
   await assert.rejects(
     transport.receive({
@@ -140,7 +141,7 @@ test("Relay direct-message listener persists actual events before marking them r
     id: "customer-agent", handle: "customer", sendMessage: async () => message,
     onDirectMessage: (handler) => { emit = handler; calls.push("listen"); return () => { calls.push("unsubscribe"); }; },
     inbox: { get: async () => { calls.push("replay"); return { unreadChannels: [], mentions: [], recentReactions: [], unreadDms: [] }; } },
-    messages: { listDirect: async () => [], markRead: async () => { calls.push("read"); controller.abort(); return { messageId: message.messageId }; } },
+    messages: { get: async () => message, listDirect: async () => [], markRead: async () => { calls.push("read"); controller.abort(); return { messageId: message.messageId }; } },
   };
   const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
   const transport = createRelayTransport(async (id) => id === "customer" ? recipient : partner);
@@ -162,7 +163,7 @@ test("a slow unread-history request cannot delay a live Relay message", async ()
     id: "customer-agent", handle: "customer", sendMessage: async () => message,
     onDirectMessage: (handler) => { emit = handler; return () => {}; },
     inbox: { get: () => new Promise(() => {}) },
-    messages: { listDirect: async () => [], markRead: async () => { assert(persisted); controller.abort(); return { messageId: message.messageId }; } },
+    messages: { get: async () => message, listDirect: async () => [], markRead: async () => { assert(persisted); controller.abort(); return { messageId: message.messageId }; } },
   };
   const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
   const transport = createRelayTransport(async (id) => id === "customer" ? recipient : partner);
@@ -172,4 +173,33 @@ test("a slow unread-history request cannot delay a live Relay message", async ()
   emit(message);
   await subscribed;
   assert(persisted);
+});
+
+
+test("Relay hydrates stripped SDK metadata by exact message ID and rejects a mismatched authenticated sender", async () => {
+  for (const validSender of [true, false]) {
+    const message = { id: "hydrated-dm", messageId: "hydrated-dm", text: "Diagnostic details", from: { id: "vendor-agent" }, metadata: { caseId: "case-1", eventId: "event-hydrated" } };
+    const controller = new AbortController();
+    let emit: ((value: Omit<typeof message, "metadata">) => void) | undefined;
+    const calls: string[] = [];
+    const recipient: RelayClient = {
+      id: "customer-agent", handle: "customer", sendMessage: async () => message,
+      onDirectMessage: (handler) => { emit = handler; return () => {}; },
+      inbox: { get: async () => ({ unreadChannels: [], mentions: [], recentReactions: [], unreadDms: [] }) },
+      messages: {
+        get: async (id) => { assert.equal(id, "hydrated-dm"); calls.push("get"); setImmediate(() => controller.abort()); return { ...message, from: { id: validSender ? "vendor-agent" : "attacker-agent" } }; },
+        listDirect: async () => [],
+        markRead: async () => { calls.push("read"); return { messageId: message.messageId }; },
+      },
+    };
+    const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
+    const transport = createRelayTransport(async (id) => id === "customer" ? recipient : partner);
+    const subscribed = transport.subscribe({ organizationId: "customer", partnerId: "vendor", signal: controller.signal, onMessage: async (received) => { assert.equal(received.caseId, "case-1"); assert.equal(received.eventId, "event-hydrated"); calls.push("persist"); } });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert(emit);
+    const { metadata: _metadata, ...stripped } = message;
+    emit(stripped);
+    await subscribed;
+    assert.deepEqual(calls, validSender ? ["get", "persist", "read"] : ["get"]);
+  }
 });

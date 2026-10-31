@@ -107,12 +107,12 @@ The key remaining proof is one complete real model-driven customer/vendor invest
 - The recording worker is configured to use the local Terse actor server for case state.
 - Notion, AWS, and Ramp have distinct Relay identities. Google registration has been returning Relay HTTP 503 (“database temporarily overloaded”); do not assume Google live messaging is configured.
 - The conversation UI and /admin confirmation were inspected in the browser. Reset was tested on separate temporary local and Terse state, not against the active recording.
-- Production build passes. The latest full test run before the Relay receiver adjustment had 84 passing tests.
 - A receiver issue was found during rehearsal: the actual DM was created, but the SDK durable delivery inbox was empty. The receiver now uses token-scoped live DM listeners, and unread-history replay runs independently. Tests verify sender checks, persist-before-read, and processing live messages while history is stalled.
-
-- Final checks: production build and all 87 automated tests pass.
+- The installed Relaycast SDK also strips custom metadata from live DM events. Janus now fetches the exact message using the recipient's token when metadata is missing, then revalidates the message ID and authenticated sender. Regression tests cover metadata recovery and rejection of a mismatched sender. Janus sends read receipts after persistence; the SDK itself acknowledges transport delivery automatically.
+- Final checks: production build and all 88 automated tests pass.
 - A human message was submitted through the actual browser composer and persisted privately with a queued model turn. The draft cleared only after the server accepted it.
 - **Still unverified at handoff:** an actual AWS recipient turn and the complete bilateral repair. Relay history reads timed out and registration requests returned HTTP 503; the first Notion DM was sent, but the AWS turn was not observed. Do not describe that as a completed two-agent run. Start with this live transport check before recording.
+- A subsequent browser-submitted follow-up reached `send_partner_message`, but Relay rejected the send with `RelayError: The database is temporarily overloaded`. The failed run is persisted in Supabase and the case is escalated. This attempt did not exercise the repaired receiver. Once Relay recovers, submit a new human follow-up; the checkpoint runner resumes unfinished work before processing the new turn.
 - Rehearsal case on Samuel’s machine: `JAN-40A34A1B`, Notion/AWS. Its state is local to Samuel’s Terse server and is not included in the bundle. Create your own fresh case after coordinating which machine owns the Relay worker.
 
 ## First task for your coding agent
