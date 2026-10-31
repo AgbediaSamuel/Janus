@@ -17,6 +17,7 @@ import {
   type InvestigatorFactory,
 } from "./investigations";
 import { executeDemo } from "./demo-service";
+import { SignalService, signalInput } from "./signals";
 
 const object = z.record(z.string(), z.unknown());
 const orgInput = z.string().trim().min(1);
@@ -37,6 +38,7 @@ export async function createApp(
           process.env.DATABASE_URL &&
           process.env.OPENAI_MODEL),
     );
+  const signals = new SignalService(store, investigations, agentsAvailable);
   const app = express();
   app.disable("x-powered-by");
   app.use((req, res, next) => {
@@ -221,6 +223,18 @@ export async function createApp(
     }
   });
 
+  app.post("/api/signals", async (req, res) => {
+    const input = signalInput.parse(req.body);
+    requireOrganization(res, input.organizationId);
+    const result = await signals.ingest(input);
+    res
+      .status(result.created ? 201 : 200)
+      .json({
+        ...result,
+        case: projectCase(result.case, input.organizationId),
+      });
+  });
+
   app.post("/api/cases", async (req, res) => {
     const input = z
       .object({
@@ -381,12 +395,10 @@ export async function createApp(
       input.message ||
         "Investigate this case. Gather evidence, coordinate with the partner when needed, and verify any recovery.",
     );
-    res
-      .status(202)
-      .json({
-        queued: true,
-        case: projectCase((await store.getCase(item.id))!, organizationId),
-      });
+    res.status(202).json({
+      queued: true,
+      case: projectCase((await store.getCase(item.id))!, organizationId),
+    });
   });
 
   app.post("/api/demo/service/:id/checkout", async (req, res) => {
@@ -415,11 +427,9 @@ export async function createApp(
       _next: express.NextFunction,
     ) => {
       if (error instanceof z.ZodError) {
-        res
-          .status(400)
-          .json({
-            error: error.issues.map((issue) => issue.message).join("; "),
-          });
+        res.status(400).json({
+          error: error.issues.map((issue) => issue.message).join("; "),
+        });
         return;
       }
       if (error instanceof HttpError) {
@@ -434,12 +444,10 @@ export async function createApp(
         "Request failed:",
         error instanceof Error ? error.name : "UnknownError",
       );
-      res
-        .status(500)
-        .json({
-          error:
-            "The operation failed. Check the server configuration and retry.",
-        });
+      res.status(500).json({
+        error:
+          "The operation failed. Check the server configuration and retry.",
+      });
     },
   );
   app.locals.investigations = investigations;

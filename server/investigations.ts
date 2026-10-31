@@ -44,6 +44,10 @@ export class InvestigationService {
       });
       if (item.status !== "awaiting_approval") item.status = "investigating";
     });
+    await this.startPending(caseId);
+  }
+
+  async startPending(caseId: string) {
     await this.watchCase(caseId);
     this.wake();
   }
