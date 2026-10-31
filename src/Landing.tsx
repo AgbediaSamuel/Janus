@@ -126,7 +126,7 @@ export default function Landing() {
 
         <section
           className="lp-case-field"
-          aria-label="An illustrative investigation"
+          aria-label="An investigation"
         >
           <div className="lp-wrap">
             <div className="lp-case-heading">

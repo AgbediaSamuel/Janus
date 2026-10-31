@@ -1,3 +1,4 @@
+import { evidenceData, sourceLabel } from "./presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -29,7 +30,6 @@ import {
   Play,
   Plug,
   Plus,
-  RefreshCw,
   Search,
   Server,
   ShieldCheck,
@@ -461,7 +461,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
             <details className="approval-action">
               <summary>Review exact action</summary>
               <p>
-                {approval.action.connectorId} · {approval.action.operation}
+                {sourceLabel(approval.action.connectorId)} · {approval.action.operation}
               </p>
               <pre>{JSON.stringify(approval.action.input, null, 2)}</pre>
             </details>
@@ -655,22 +655,6 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                 <span>{shortID(selected.id)}</span>
               </>
             )}
-          </div>
-          <div className="topbar-right">
-            <button
-              className="icon-button"
-              disabled={!!busy}
-              onClick={() => act("refresh", refresh)}
-              aria-label="Refresh workspace"
-            >
-              <RefreshCw
-                size={16}
-                className={busy === "refresh" ? "spin" : ""}
-              />
-            </button>
-            <span className="user-avatar">
-              <OrganizationLogo id={organizationId} name={org?.name || ""} />
-            </span>
           </div>
         </header>
         <main>
@@ -1087,9 +1071,9 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                                   <Database size={17} />
                                 </span>
                                 <div>
-                                  <span className="eyebrow">{item.source}</span>
-                                  <h3>{item.title}</h3>
-                                  <p>{item.summary}</p>
+                                  <span className="eyebrow">{sourceLabel(item.source)}</span>
+                                  <h3>{sourceLabel(item.title)}</h3>
+                                  <p>{item.simulated && item.title === "Incoming alert details" ? "Monitoring trace reviewed by the monitoring agent." : item.summary}</p>
                                   <div className="evidence-meta">
                                     <span>
                                       {item.visibility === "private" ? (
@@ -1369,7 +1353,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
           >
             <div className="modal-heading">
               <span className="eyebrow">
-                {evidence.source} ·{" "}
+                {sourceLabel(evidence.source)} ·{" "}
                 {evidence.simulated
                   ? "EVIDENCE"
                   : evidence.provenance
@@ -1384,8 +1368,8 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                 <X size={19} />
               </button>
             </div>
-            <h2 id="evidence-title">{evidence.title}</h2>
-            <p>{evidence.summary}</p>
+            <h2 id="evidence-title">{sourceLabel(evidence.title)}</h2>
+            <p>{evidence.simulated && evidence.title === "Incoming alert details" ? "Monitoring trace reviewed by the monitoring agent." : evidence.summary}</p>
             <div className="evidence-meta">
               <span>
                 {evidence.visibility === "private" ? (
@@ -1399,7 +1383,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
               </span>
               <span>Collected {time(evidence.collectedAt)}</span>
             </div>
-            <pre>{JSON.stringify(evidence.data, null, 2)}</pre>
+            <pre>{JSON.stringify(evidence.data, evidenceData, 2)}</pre>
           </section>
         </div>
       )}

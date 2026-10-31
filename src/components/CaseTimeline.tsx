@@ -1,3 +1,4 @@
+import { sourceLabel } from "../presentation";
 import { useState } from "react";
 import type { CaseEvent, Evidence, Organization, SupportCase } from "../types";
 import {
@@ -185,7 +186,7 @@ export default function CaseTimeline({
                         <span className="trace-human-label">Team member</span>
                       )}
                     </span>
-                    <span className="trace-title">{event.title}</span>
+                    <span className="trace-title">{sourceLabel(event.title)}</span>
                     <span className="trace-meta">
                       {channel && (
                         <span>{channelNames[channel] || event.channel}</span>
