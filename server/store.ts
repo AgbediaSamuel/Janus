@@ -5,22 +5,7 @@ import { liveMode, supabaseAdmin, HttpError } from "./config";
 import { decryptCredentials, encryptCredentials } from "./secrets";
 import { persistTerseCase, readTerseCase } from "./runtime/terse";
 
-export const demoOrganizations: Organization[] = [
-  {
-    id: "northstar",
-    name: "Northstar",
-    role: "Customer",
-    agentName: "Nova",
-    deployment: "hosted",
-  },
-  {
-    id: "contoso",
-    name: "Contoso Cloud",
-    role: "Vendor",
-    agentName: "Atlas",
-    deployment: "self-hosted",
-  },
-];
+import { localOrganizations, seededCases } from "./fixtures";
 
 interface Data {
   cases: SupportCase[];
@@ -45,10 +30,35 @@ export class Store {
         ...connection,
         status: "not_configured",
         message:
-          "Demo credentials are held in memory. Reconnect after a restart.",
+          "Credentials are held locally in memory. Reconnect after a server restart.",
       }));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    for (const item of seededCases().reverse()) {
+      const existing = this.data.cases.find(
+        (candidate) => candidate.id === item.id,
+      );
+      if (process.env.TERSE_ACTOR_URL) {
+        const persisted = await readTerseCase(item.id);
+        if (persisted.snapshot) {
+          if (!existing) {
+            this.data.cases.unshift(persisted.snapshot);
+            await this.save();
+          }
+          continue;
+        }
+        if (existing) {
+          await persistTerseCase({
+            caseId: existing.id,
+            eventId: `create:${existing.id}`,
+            expectedVersion: 0,
+            snapshot: existing,
+          });
+          continue;
+        }
+      }
+      if (!existing) await this.createCase(item);
     }
   }
 
@@ -67,7 +77,12 @@ export class Store {
   }
 
   async organizations(ids?: string[]): Promise<Organization[]> {
-    if (!liveMode) return demoOrganizations;
+    if (!liveMode)
+      return ids
+        ? localOrganizations.filter((organization) =>
+            ids.includes(organization.id),
+          )
+        : localOrganizations;
     const query = supabaseAdmin().from("organizations").select("*");
     const { data, error } = await (ids ? query.in("id", ids) : query);
     if (error) throw error;
@@ -109,13 +124,11 @@ export class Store {
   async createCase(item: SupportCase) {
     return this.serialized(async () => {
       if (liveMode) {
-        const { error } = await supabaseAdmin()
-          .from("support_cases")
-          .insert({
-            id: item.id,
-            customer_id: item.customerId,
-            vendor_id: item.vendorId,
-          });
+        const { error } = await supabaseAdmin().from("support_cases").insert({
+          id: item.id,
+          customer_id: item.customerId,
+          vendor_id: item.vendorId,
+        });
         if (error) throw error;
         await persistTerseCase({
           caseId: item.id,

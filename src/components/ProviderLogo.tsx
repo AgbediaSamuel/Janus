@@ -1,4 +1,7 @@
 const providerAssets: Record<string, string> = {
+  notion: "notion",
+  aws: "aws",
+  google: "google-cloud",
   slack: "slack",
   linear: "linear",
   github: "github",

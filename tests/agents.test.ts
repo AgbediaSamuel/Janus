@@ -141,6 +141,31 @@ test("replaying a completed turn reads its checkpoint and never invokes the agen
   );
 });
 
+test("Responses content returns only visible text blocks, excluding reasoning metadata", async () => {
+  const agent: CheckpointedAgent = {
+    getState: async () => ({ next: [], values: { messages: [] } }),
+    invoke: async () => ({
+      messages: [
+        {
+          content: [
+            {
+              type: "reasoning",
+              text: "Private model reasoning",
+              encrypted_content: "opaque",
+            },
+            { type: "text", text: "The proposed action is pending." },
+            { type: "text", text: "Waiting for human approval." },
+          ],
+        },
+      ],
+    }),
+  };
+  assert.equal(
+    await invokeCheckpointedTurn(agent, "thread-responses", "Investigate"),
+    "The proposed action is pending.\nWaiting for human approval.",
+  );
+});
+
 test("a new turn first resumes unfinished work and then submits its own stable message ID", async () => {
   const inputs: unknown[] = [];
   const agent: CheckpointedAgent = {

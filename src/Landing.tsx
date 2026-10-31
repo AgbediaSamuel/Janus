@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowRight, ArrowUpRight } from "./components/Icons";
 import ProviderLogo from "./components/ProviderLogo";
 import "./Landing.css";
 
@@ -63,7 +64,8 @@ const stages = [
 ];
 
 function Arrow({ diagonal = false }: { diagonal?: boolean }) {
-  return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
+  const Icon = diagonal ? ArrowUpRight : ArrowRight;
+  return <Icon size={14} strokeWidth={1.6} className="lp-arrow" />;
 }
 
 export default function Landing() {
@@ -116,9 +118,9 @@ export default function Landing() {
         >
           <div className="lp-wrap">
             <div className="lp-case-heading">
-              <span className="lp-eyebrow">Illustrative case</span>
+              <span className="lp-eyebrow">Example investigation</span>
               <span>One failing request. Two views of the problem.</span>
-              <span className="lp-case-number">CASE / 001</span>
+              <span className="lp-case-number">Case 001</span>
             </div>
             <div className="lp-investigation">
               <article className="lp-agent-panel">
@@ -340,7 +342,7 @@ export default function Landing() {
             </div>
             <div className="lp-approval-paper">
               <header>
-                <span className="lp-eyebrow">Illustrative approval</span>
+                <span className="lp-eyebrow">Example approval</span>
                 <span className="lp-review-badge">Your review</span>
               </header>
               <h3>Revert the affected rollout</h3>
@@ -417,7 +419,6 @@ export default function Landing() {
         </section>
 
         <section className="lp-final lp-wrap" aria-labelledby="lp-final-title">
-          <p className="lp-eyebrow">A better next reply starts here</p>
           <div>
             <h2 id="lp-final-title">
               Put both sides

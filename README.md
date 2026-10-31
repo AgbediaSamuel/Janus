@@ -14,19 +14,19 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the public landing page at the Vite URL, normally `http://127.0.0.1:5173`, then choose **Open Janus** to enter `/app`. The local sample workspace needs no login. The API listens on `127.0.0.1:4318`.
+Open the public landing page at the Vite URL, normally `http://127.0.0.1:5173`, then choose **Open Janus** to enter `/app`. The local workspace needs no login. The API listens on `127.0.0.1:4318`.
 
-With no credentials, the app runs a clearly labeled guided incident replay. Start a case, advance the investigation, switch to the vendor organization, approve or reject the action, and verify the result. This replay is a fixture, not an AI investigation or a live cloud outage. Its state persists in `.janus/`; connector credentials entered in demo mode remain in server memory only and must be entered again after restart.
+Without credentials, the app opens a Notion workspace with two persisted cases: AWS S3 upload failures under investigation and a Google Cloud indexing incident awaiting Notion approval. Continue the AWS investigation, review its scoped recovery from the AWS workspace, and verify uploads. Approve the indexing replay from Notion, then continue to verify search freshness. These are local service fixtures, not live incidents involving the named companies. The backend retains `mode: simulation` and `simulated: true`; no provider credentials or verified connections are fabricated. Startup adds missing seed IDs once and preserves all existing cases and progress. State persists in `.janus/`; connector credentials entered in local mode remain in memory and must be entered again after restart.
 
 To use actual Terse persistence locally, run `pnpm dev:actors` in a second terminal and set `TERSE_ACTOR_URL=http://127.0.0.1:7100/v1/projects/janus/actors` before starting the API. Start a new case after switching storage modes. Terse becomes authoritative; `.janus/` keeps the local case index. The actor server needs no cloud account.
 
 ## Model-driven demo
 
-The same case has an executable local service fixture. A checkout request returns HTTP 503 while its tenant points to an unhealthy canary and returns HTTP 200 after the vendor's approved rollback. Agents have separate customer traces/probes and vendor rollout tools; the customer cannot inspect vendor configuration directly.
+The same case has an executable local service fixture. An attachment upload returns HTTP 503 while its tenant points to an unhealthy route and returns HTTP 200 after the vendor's approved rollback. The indexing scenario similarly restores a compatible consumer and drains the local backlog after customer approval. Agents have separate customer traces/probes and vendor rollout tools; the customer cannot inspect vendor configuration directly.
 
-Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. Configure separate customer/vendor Agent Relay identities for actual cross-company messages. Start a fresh demo case and choose **Run investigation** rather than advancing the guided replay. Freestyle tools become available when `FREESTYLE_API_KEY` is set. All local fixture evidence remains labeled simulated, even when a real model investigates it.
+Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. Configure separate customer/vendor Agent Relay identities for actual cross-company messages. Start a fresh demo case and open **Investigation details → Use connected agents** before advancing the guided case. Freestyle tools become available when `FREESTYLE_API_KEY` is set. All local fixture evidence retains `simulated: true` in the API, even when a real model investigates it.
 
-`POST /api/demo/service/:caseId/checkout` exercises the fixture directly. The model-driven path requires account setup and has not been validated against paid providers without those credentials.
+`POST /api/demo/service/:caseId/checkout` exercises the fixture directly. Real Luna inference has passed the bounded `pnpm smoke:agent` experiment. The full bilateral investigation still requires PostgreSQL and Relay credentials; see [the demo guide](docs/demo.md).
 
 ## Connect the accounts
 
@@ -48,11 +48,11 @@ Example organization setup, after replacing the Auth user IDs:
 
 ```sql
 insert into public.organizations (id, name, role, agent_name, deployment) values
-  ('northstar', 'Northstar', 'Customer', 'Nova', 'hosted'),
-  ('contoso', 'Contoso Cloud', 'Vendor', 'Atlas', 'self-hosted');
+  ('notion', 'Notion', 'Customer', 'Nova', 'hosted'),
+  ('aws', 'AWS', 'Vendor', 'Atlas', 'self-hosted');
 insert into public.organization_members (organization_id, user_id) values
-  ('northstar', '<customer-auth-user-uuid>'),
-  ('contoso', '<vendor-auth-user-uuid>');
+  ('notion', '<customer-auth-user-uuid>'),
+  ('aws', '<vendor-auth-user-uuid>');
 ```
 
 ## Runtime ownership
@@ -90,3 +90,7 @@ pnpm build
 ```
 
 Tests cover connector request construction and failures, organization isolation, approval replay protection, credential encryption, Relay identity validation, actor versioning, and Deep Agents checkpoint replay with a fake test model. Provider mocks do not establish that live account scopes or endpoints are configured correctly. The Terse local runtime has also been exercised through actual HTTP calls across a server restart.
+
+## Typography
+
+The app uses Söhne through the project owner’s YC access, with a text-only Instrument Serif wordmark. Place the licensed webfont at `public/fonts/Sohne.woff2` before building or deploying. The font binary and local API keys are excluded from the public repository. See [font setup](public/fonts/README.md).

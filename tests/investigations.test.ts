@@ -64,7 +64,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
         case: { approvals: unknown[] };
         integrations: { id: string }[];
       };
-      if (organizationId === "northstar") {
+      if (organizationId === "notion") {
         assert.deepEqual(
           visible.integrations.map((item) => item.id),
           ["demo-customer"],
@@ -174,7 +174,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
     assert.equal(
       (
         await request(`/api/cases/${id}/investigate`, {
-          organizationId: "northstar",
+          organizationId: "notion",
         })
       ).status,
       202,
@@ -189,7 +189,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
     assert.equal(
       (
         await request(`/api/cases/${id}/investigate`, {
-          organizationId: "contoso",
+          organizationId: "aws",
         })
       ).status,
       202,
@@ -198,12 +198,12 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
       async () => (await fixture.store.getCase(id))?.approvals.length === 1,
     );
     const pending = (await fixture.store.getCase(id))!.approvals[0];
-    assert.equal(pending.organizationId, "contoso");
+    assert.equal(pending.organizationId, "aws");
     assert.equal(
       (await fixture.store.getCase(id))?.demoService?.route,
       "canary",
     );
-    const customerState = await request("/api/state?organizationId=northstar");
+    const customerState = await request("/api/state?organizationId=notion");
     assert.deepEqual(
       customerState.data.cases.find((item: any) => item.id === id).approvals,
       [],
@@ -214,7 +214,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
     assert.equal(approved.status, 200);
     assert.equal(approved.data.approvals[0].executionStatus, "succeeded");
     const customerAfterApproval = await request(
-      "/api/state?organizationId=northstar",
+      "/api/state?organizationId=notion",
     );
     assert.equal(
       JSON.stringify(customerAfterApproval.data).includes(
@@ -237,7 +237,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
     assert.equal(
       (
         await request(`/api/cases/${id}/investigate`, {
-          organizationId: "northstar",
+          organizationId: "notion",
           message: "Verify recovery",
         })
       ).status,
@@ -265,7 +265,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
     assert.equal(
       (
         await request(`/api/cases/${guided.data.id}/investigate`, {
-          organizationId: "northstar",
+          organizationId: "notion",
         })
       ).status,
       409,

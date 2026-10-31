@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Organization, SupportCase } from "../types";
 import "./InvestigationMap.css";
+import ProviderLogo from "./ProviderLogo";
 
 interface InvestigationMapProps {
   supportCase?: SupportCase;
@@ -178,8 +179,11 @@ export default function InvestigationMap({
         </div>
         <div className="map-company">
           <span className="map-company-icon">
-            {organization.name.slice(0, 1).toUpperCase()}
-            <span />
+            {["notion", "aws", "google"].includes(organization.id) ? (
+              <ProviderLogo connectorId={organization.id} size={28} />
+            ) : (
+              organization.name.slice(0, 1).toUpperCase()
+            )}
           </span>
           <h3>{organization.name}</h3>
         </div>
@@ -244,15 +248,6 @@ export default function InvestigationMap({
           </span>
           <span>Investigation map</span>
         </div>
-        <span className="map-mode">
-          {supportCase?.runs?.length
-            ? "Agent investigation"
-            : supportCase?.mode === "simulation"
-              ? "Guided simulation"
-              : supportCase
-                ? "Shared investigation"
-                : "Organization network"}
-        </span>
       </div>
       <div className="map-stage">
         {participant(customer, "customer")}

@@ -40,6 +40,11 @@ export function configuredRelayTokens(): Record<string, string> {
       tokens[id] = token;
     }
   }
+  if (process.env.RELAY_NOTION_TOKEN)
+    tokens.notion = process.env.RELAY_NOTION_TOKEN;
+  if (process.env.RELAY_AWS_TOKEN) tokens.aws = process.env.RELAY_AWS_TOKEN;
+  if (process.env.RELAY_GOOGLE_TOKEN)
+    tokens.google = process.env.RELAY_GOOGLE_TOKEN;
   if (process.env.RELAY_NORTHSTAR_TOKEN)
     tokens.northstar = process.env.RELAY_NORTHSTAR_TOKEN;
   if (process.env.RELAY_CONTOSO_TOKEN)

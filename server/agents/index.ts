@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import pg from "pg";
 import { createDeepAgent } from "deepagents";
-import { ChatOpenAI } from "@langchain/openai";
+import { createInvestigationModel } from "./model";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { createInvestigationTools, type InvestigatorTools } from "./tools";
 import { createWorkspaceTools } from "./workspace";
@@ -56,7 +56,7 @@ export async function createInvestigator(options: InvestigatorOptions) {
       );
     }
     const agent = createDeepAgent({
-      model: new ChatOpenAI({ model: modelName }),
+      model: createInvestigationModel({ model: modelName }),
       checkpointer,
       tools,
       systemPrompt: `You are Janus, the technical support investigator for organization ${JSON.stringify(options.organizationId)} on case ${JSON.stringify(options.caseId)}.

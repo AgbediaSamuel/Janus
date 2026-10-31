@@ -41,3 +41,7 @@ Every one of the 27 connector IDs has an explicit, distinct asset mapping in `Pr
 Render the marks without CSS filters, recoloring, or cropping, on the neutral white provider tile. `ProviderLogo` uses an empty image alt because the adjoining provider name supplies the accessible label.
 
 The service icons are not covered by the Devicon or Simple Icons licenses: see [Microsoft Azure icon terms](https://learn.microsoft.com/en-us/azure/architecture/icons/), [AWS architecture icon terms](https://aws.amazon.com/architecture/icons/), and [Google Cloud’s official icon library](https://cloud.google.com/icons). They identify the named provider services and remain unmodified.
+
+## Organization marks
+
+The workspace picker and case participants also use unchanged Devicon 2.18.0 original SVGs (MIT collection license): [Notion](https://github.com/devicons/devicon/blob/v2.18.0/icons/notion/notion-original.svg), [AWS](https://github.com/devicons/devicon/blob/v2.18.0/icons/amazonwebservices/amazonwebservices-original.svg), and [Google Cloud](https://github.com/devicons/devicon/blob/v2.18.0/icons/googlecloud/googlecloud-original.svg). These identify the example organizations; they do not imply a customer relationship.

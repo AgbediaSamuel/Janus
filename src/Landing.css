@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;450;500;550;600;650;700&family=Instrument+Serif:ital@0;1&display=swap");
+@import "./typography.css";
 
 body {
   margin: 0;
@@ -11,8 +11,8 @@ body {
   --lp-line: #deddd3;
   color: var(--lp-ink);
   background: var(--lp-paper);
-  font-family: "Instrument Sans", sans-serif;
-  font-size: 15px;
+  font-family: var(--font-text);
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
 }
 .landing * {
@@ -32,8 +32,8 @@ body {
 .landing h1,
 .landing h2,
 .landing h3 {
-  font-family: "Instrument Sans", sans-serif;
-  font-weight: 500;
+  font-family: var(--font-text);
+  font-weight: 300;
 }
 .landing a {
   color: inherit;
@@ -76,14 +76,14 @@ body {
   font-size: 45px;
   font-weight: 400;
   line-height: 1;
-  letter-spacing: -2px;
+  letter-spacing: -0.8px;
 }
 .lp-header nav {
   display: flex;
   align-items: center;
   gap: 34px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 400;
 }
 .lp-header nav > a:not(.lp-button):hover,
 .lp-footer > a:last-child:hover {
@@ -93,8 +93,8 @@ body {
 .landing .lp-button {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 34px;
+  justify-content: center;
+  gap: 12px;
   color: #fcfbf7;
   background: var(--lp-ink);
   border: 1px solid var(--lp-ink);
@@ -109,22 +109,22 @@ body {
 }
 .landing .lp-button-small {
   padding: 11px 16px;
-  gap: 25px;
+  gap: 12px;
 }
-.lp-button > span,
-.lp-text-link > span {
-  font-size: 21px;
-  line-height: 1;
+.landing .lp-arrow {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
 }
 .lp-hero {
   padding-block: 80px 74px;
 }
 .landing .lp-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1.6px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1.6;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .lp-hero-copy {
   display: grid;
@@ -134,9 +134,9 @@ body {
   margin-top: 24px;
 }
 .landing .lp-hero h1 {
-  font-size: clamp(54px, 6.45vw, 88px);
-  line-height: 1.03;
-  letter-spacing: -0.065em;
+  font-size: clamp(48px, 5.2vw, 68px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
 }
 .lp-hero-aside {
   max-width: 330px;
@@ -151,8 +151,8 @@ body {
 .landing .lp-text-link {
   display: inline-flex;
   align-items: center;
-  gap: 35px;
-  font-size: 14px;
+  gap: 12px;
+  font-size: 16px;
   font-weight: 600;
   padding-block: 8px;
   border-bottom: 1px solid var(--lp-ink);
@@ -170,18 +170,17 @@ body {
   margin-bottom: 26px;
 }
 .lp-case-heading > span:nth-child(2) {
-  font-size: 12px;
+  font-size: 14px;
 }
 .lp-case-number {
   margin-left: auto;
-  font:
-    10px "IBM Plex Mono",
-    monospace;
+  font: inherit;
+  font-size: 13px;
   letter-spacing: 0.5px;
 }
 .lp-investigation {
   display: grid;
-  grid-template-columns: 1fr 0.6fr 1fr;
+  grid-template-columns: 1fr 0.62fr 1fr;
   align-items: center;
 }
 .lp-agent-panel {
@@ -199,16 +198,16 @@ body {
   gap: 10px;
 }
 .lp-side-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 600;
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 .lp-agent-label {
   display: flex;
   gap: 5px;
   align-items: center;
-  font-size: 9px;
+  font-size: 13px;
   color: var(--lp-muted);
 }
 .lp-agent-label i {
@@ -224,21 +223,20 @@ body {
   margin-block: 29px 26px;
 }
 .landing .lp-panel-heading h2 {
-  font-size: 31px;
-  line-height: 1.11;
-  letter-spacing: -1.2px;
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
 }
 .lp-file-index {
-  font:
-    10px "IBM Plex Mono",
-    monospace;
+  font: inherit;
+  font-size: 13px;
   color: #aaa797;
 }
 .lp-evidence-line {
   display: flex;
   gap: 10px;
   align-items: center;
-  font-size: 11px;
+  font-size: 14px;
 }
 .lp-evidence-line code {
   margin-left: auto;
@@ -262,23 +260,24 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font:
-    10px "IBM Plex Mono",
-    monospace;
+  font-size: 13px;
 }
 .lp-log span {
   color: #858174;
 }
 .lp-log b {
+  font:
+    11px "IBM Plex Mono",
+    monospace;
   font-weight: 400;
 }
 .lp-evidence-secondary {
   margin-top: 15px;
-  font-size: 10px;
+  font-size: 14px;
 }
 .lp-small-status {
   margin-left: auto;
-  font-size: 9px;
+  font-size: 13px;
   color: #5e684a;
 }
 .lp-status-review {
@@ -287,7 +286,7 @@ body {
 .landing .lp-agent-finding {
   margin-block: 22px;
   min-height: 80px;
-  font-size: 11px;
+  font-size: 16px;
   line-height: 1.7;
   color: #68665b;
 }
@@ -297,7 +296,7 @@ body {
   align-items: center;
   padding: 12px 0;
   border-top: 1px solid #e6e4da;
-  font-size: 9px;
+  font-size: 13px;
   color: #888477;
 }
 .lp-private-dot {
@@ -343,14 +342,14 @@ body {
   right: 0;
 }
 .lp-exchange-line {
-  font-size: 35px;
+  font-size: 24px;
   line-height: 1;
   margin-bottom: 19px;
   font-weight: 400;
 }
 .lp-shared-panel .lp-eyebrow {
-  font-size: 9px;
-  letter-spacing: 1.1px;
+  font-size: 15px;
+  letter-spacing: 0;
 }
 .lp-finding-sheet {
   display: flex;
@@ -367,13 +366,13 @@ body {
   box-shadow: 3px 4px 0 #e7b58d;
 }
 .lp-finding-sheet strong {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
   font-weight: 500;
   margin: 14px 0 8px;
 }
 .lp-finding-sheet > span:last-child {
-  font-size: 9px;
+  font-size: 13px;
   color: #947357;
 }
 .lp-document-lines {
@@ -389,7 +388,7 @@ body {
   width: 13px;
 }
 .landing .lp-shared-panel > p {
-  font-size: 10px;
+  font-size: 13px;
   color: #805d43;
   line-height: 1.6;
 }
@@ -416,7 +415,7 @@ body {
   border-radius: 3px;
   cursor: pointer;
   text-align: left;
-  font-size: 10px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .lp-stage-tabs button[aria-pressed="true"] {
@@ -425,16 +424,15 @@ body {
   border-color: var(--lp-ink);
 }
 .lp-stage-tabs button > span:first-child {
-  font:
-    9px "IBM Plex Mono",
-    monospace;
+  font: inherit;
+  font-size: 13px;
   opacity: 0.65;
 }
-.lp-stage-tabs button > span:last-child {
+.lp-stage-tabs button > .lp-arrow {
   margin-left: auto;
 }
 .landing .lp-case-controls > p {
-  font-size: 11px;
+  font-size: 16px;
   line-height: 1.7;
   color: #775638;
   min-height: 56px;
@@ -450,14 +448,14 @@ body {
 .landing .lp-approval-layout h2 {
   font-size: 44px;
   line-height: 1.12;
-  letter-spacing: -2px;
+  letter-spacing: -0.8px;
   margin-top: 23px;
 }
 .landing .lp-section-intro > p:last-child {
   max-width: 320px;
   color: var(--lp-muted);
   margin-top: 25px;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.8;
 }
 .lp-mechanic-rows article {
@@ -470,19 +468,18 @@ body {
   border-bottom: 1px solid var(--lp-line);
 }
 .lp-mechanic-rows article > span {
-  font:
-    11px "IBM Plex Mono",
-    monospace;
+  font: inherit;
+  font-size: 13px;
   color: #9b9789;
   padding-top: 4px;
 }
 .landing .lp-mechanic-rows h3 {
-  font-size: 19px;
+  font-size: 26px;
   letter-spacing: -0.55px;
   margin-bottom: 12px;
 }
 .landing .lp-mechanic-rows p {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--lp-muted);
   line-height: 1.8;
 }
@@ -500,7 +497,7 @@ body {
 .landing .lp-approval-layout > div:first-child > p:not(.lp-eyebrow) {
   color: var(--lp-muted);
   max-width: 350px;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.8;
   margin-top: 24px;
 }
@@ -519,10 +516,10 @@ body {
   margin-bottom: 29px;
 }
 .lp-approval-paper .lp-eyebrow {
-  font-size: 9px;
+  font-size: 15px;
 }
 .lp-review-badge {
-  font-size: 9px;
+  font-size: 13px;
   border: 1px solid #ded8be;
   background: #f4eed9;
   border-radius: 3px;
@@ -534,7 +531,7 @@ body {
   letter-spacing: -0.7px;
 }
 .landing .lp-approval-paper > p {
-  font-size: 12px;
+  font-size: 16px;
   line-height: 1.8;
   color: var(--lp-muted);
   margin-top: 12px;
@@ -549,7 +546,7 @@ body {
   gap: 16px;
   border-top: 1px solid #e7e5da;
   padding: 12px 0;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .lp-approval-paper dt {
@@ -566,7 +563,7 @@ body {
   border-top: 1px solid var(--lp-line);
   padding-top: 20px;
   margin-top: 8px;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.6;
   color: var(--lp-muted);
 }
@@ -597,7 +594,7 @@ body {
 .landing .lp-integration-intro > p {
   max-width: 340px;
   justify-self: end;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.8;
   color: var(--lp-muted);
   padding-bottom: 4px;
@@ -619,7 +616,7 @@ body {
   gap: 12px;
   padding: 25px 6px 22px;
   border-bottom: 1px solid var(--lp-line);
-  font-size: 9px;
+  font-size: 13px;
   color: #625f54;
   line-height: 1.4;
 }
@@ -637,7 +634,7 @@ body {
 }
 .landing .lp-integration-note {
   color: #938e7f;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.7;
   margin-top: 20px;
 }
@@ -650,16 +647,16 @@ body {
   align-items: end;
   justify-content: space-between;
   gap: 30px;
-  margin-top: 23px;
+  margin-top: 0;
 }
 .landing .lp-final h2 {
-  font-size: clamp(48px, 6vw, 78px);
+  font-size: clamp(42px, 4.8vw, 64px);
   line-height: 1.03;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.025em;
 }
 .landing .lp-button-large {
   padding: 19px 24px;
-  min-width: 190px;
+  min-width: 0;
   font-size: 16px;
   margin-bottom: 6px;
 }
@@ -674,13 +671,13 @@ body {
   font-size: 36px;
 }
 .landing .lp-footer p {
-  font-size: 10px;
+  font-size: 13px;
   color: #8b8677;
   line-height: 1.5;
 }
 .lp-footer > a:last-child {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 13px;
   color: #7e796b;
 }
 @media (min-width: 1600px) {
@@ -698,13 +695,13 @@ body {
     grid-template-columns: 1.6fr 1fr;
   }
   .landing .lp-hero-aside > p {
-    font-size: 14px;
+    font-size: 16px;
   }
   .lp-agent-panel {
     padding: 19px 18px 0;
   }
   .lp-agent-label {
-    font-size: 8px;
+    font-size: 13px;
   }
   .lp-shared-panel {
     padding-inline: 15px;
@@ -723,7 +720,7 @@ body {
     padding: 12px 9px;
   }
   .lp-log > div {
-    font-size: 9px;
+    font-size: 13px;
   }
   .lp-mechanics,
   .lp-approval-layout,
@@ -734,13 +731,13 @@ body {
     gap: 30px;
   }
   .lp-stage-tabs button {
-    font-size: 9px;
+    font-size: 14px;
   }
   .lp-provider-wall {
     grid-template-columns: repeat(9, 1fr);
   }
   .lp-provider-wall li {
-    font-size: 8px;
+    font-size: 13px;
   }
 }
 @media (max-width: 850px) {
@@ -752,7 +749,7 @@ body {
   }
   .lp-header nav {
     gap: 20px;
-    font-size: 12px;
+    font-size: 16px;
   }
   .lp-hero {
     padding-block: 55px 55px;
@@ -762,20 +759,42 @@ body {
     gap: 27px;
   }
   .landing .lp-hero h1 {
-    font-size: 70px;
+    font-size: 60px;
   }
   .lp-hero-aside {
     max-width: 440px;
     justify-self: start;
   }
   .landing .lp-hero-aside > p {
-    font-size: 15px;
+    font-size: 16px;
   }
   .lp-hero-aside .lp-text-link {
     margin-top: 15px;
   }
   .lp-investigation {
-    grid-template-columns: 1fr 150px 1fr;
+    grid-template-columns: 1fr;
+    max-width: 540px;
+    margin-inline: auto;
+  }
+  .lp-shared-panel {
+    padding: 24px;
+  }
+  .lp-shared-panel::before,
+  .lp-shared-panel::after {
+    display: none;
+  }
+  .lp-exchange-line {
+    display: none;
+  }
+  .lp-finding-sheet {
+    max-width: 260px;
+    min-height: 0;
+  }
+  .lp-log > div {
+    font-size: 13px;
+  }
+  .landing .lp-agent-finding {
+    min-height: 0;
   }
   .lp-agent-panel {
     padding-inline: 14px;
@@ -792,10 +811,10 @@ body {
     margin-block: 23px;
   }
   .lp-finding-sheet strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .lp-evidence-line {
-    font-size: 9px;
+    font-size: 14px;
     gap: 6px;
   }
   .lp-evidence-secondary {
@@ -805,19 +824,19 @@ body {
     margin-left: 26px;
   }
   .lp-log > div {
-    font-size: 8px;
+    font-size: 13px;
     gap: 5px;
   }
   .landing .lp-agent-finding {
-    font-size: 10px;
-    min-height: 103px;
+    font-size: 16px;
+    min-height: 0;
   }
   .lp-case-controls {
     grid-template-columns: 1fr;
     gap: 16px;
   }
   .lp-stage-tabs button {
-    font-size: 11px;
+    font-size: 14px;
     padding: 12px;
   }
   .landing .lp-case-controls > p {
@@ -828,7 +847,7 @@ body {
     gap: 16px;
   }
   .lp-case-heading > span:nth-child(2) {
-    font-size: 10px;
+    font-size: 14px;
   }
   .lp-mechanics {
     gap: 40px;
@@ -838,13 +857,13 @@ body {
   .landing .lp-integration-intro h2,
   .landing .lp-approval-layout h2 {
     font-size: 35px;
-    letter-spacing: -1.5px;
+    letter-spacing: -0.6px;
   }
   .lp-mechanic-rows article {
     gap: 17px;
   }
   .landing .lp-mechanic-rows h3 {
-    font-size: 17px;
+    font-size: 26px;
   }
   .lp-approval-layout {
     gap: 35px;
@@ -856,7 +875,7 @@ body {
     align-items: start;
   }
   .lp-approval-paper dl > div {
-    font-size: 9px;
+    font-size: 13px;
   }
   .landing .lp-approval-paper h3 {
     font-size: 21px;
@@ -865,7 +884,7 @@ body {
     grid-template-columns: repeat(6, 1fr);
   }
   .lp-provider-wall li {
-    font-size: 9px;
+    font-size: 13px;
   }
   .lp-integrations {
     padding-block: 80px;
@@ -885,30 +904,30 @@ body {
     display: none;
   }
   .landing .lp-button-small {
-    font-size: 12px;
+    font-size: 16px;
     padding: 10px 13px;
-    gap: 22px;
+    gap: 12px;
   }
   .lp-hero {
     padding-block: 46px 46px;
   }
   .landing .lp-hero h1 {
-    font-size: clamp(44px, 11.8vw, 68px);
-    letter-spacing: -0.06em;
+    font-size: clamp(38px, 10.5vw, 58px);
+    letter-spacing: -0.025em;
   }
   .lp-hero-copy {
     margin-top: 19px;
     gap: 24px;
   }
   .landing .lp-eyebrow {
-    font-size: 9px;
-    letter-spacing: 1.2px;
+    font-size: 15px;
+    letter-spacing: 0;
   }
   .lp-hero-aside {
     max-width: 350px;
   }
   .landing .lp-hero-aside > p {
-    font-size: 14px;
+    font-size: 16px;
   }
   .lp-case-field {
     padding-block: 24px;
@@ -921,10 +940,10 @@ body {
   .lp-case-heading > span:nth-child(2) {
     width: 100%;
     order: 3;
-    font-size: 11px;
+    font-size: 14px;
   }
   .lp-case-number {
-    font-size: 9px;
+    font-size: 13px;
   }
   .lp-investigation {
     grid-template-columns: 1fr;
@@ -938,7 +957,7 @@ body {
     flex-direction: row;
   }
   .lp-agent-label {
-    font-size: 9px;
+    font-size: 13px;
   }
   .landing .lp-panel-heading h2 {
     font-size: 31px;
@@ -947,12 +966,12 @@ body {
     margin-block: 22px;
   }
   .lp-evidence-line {
-    font-size: 11px;
+    font-size: 14px;
     gap: 9px;
   }
   .lp-evidence-secondary {
     flex-wrap: nowrap;
-    font-size: 10px;
+    font-size: 14px;
   }
   .lp-small-status {
     margin-left: auto;
@@ -961,10 +980,10 @@ body {
     padding: 13px;
   }
   .lp-log > div {
-    font-size: 10px;
+    font-size: 13px;
   }
   .landing .lp-agent-finding {
-    font-size: 11px;
+    font-size: 16px;
     min-height: 0;
     margin-block: 18px;
   }
@@ -999,7 +1018,7 @@ body {
   }
   .lp-finding-sheet strong {
     margin: 0 0 5px;
-    font-size: 12px;
+    font-size: 14px;
   }
   .landing .lp-shared-panel > p {
     display: none;
@@ -1012,9 +1031,9 @@ body {
     align-items: start;
     gap: 6px;
     padding: 10px 9px;
-    font-size: 10px;
+    font-size: 14px;
   }
-  .lp-stage-tabs button > span:last-child {
+  .lp-stage-tabs button > .lp-arrow {
     display: none;
   }
   .lp-case-controls {
@@ -1043,7 +1062,7 @@ body {
     gap: 22px;
   }
   .landing .lp-mechanic-rows h3 {
-    font-size: 19px;
+    font-size: 26px;
   }
   .lp-approval-section {
     padding-block: 62px;
@@ -1056,7 +1075,7 @@ body {
     padding: 24px;
   }
   .lp-approval-paper dl > div {
-    font-size: 10px;
+    font-size: 13px;
   }
   .lp-approval-paper > header {
     align-items: center;
@@ -1071,7 +1090,7 @@ body {
   }
   .landing .lp-integration-intro > p {
     justify-self: start;
-    font-size: 13px;
+    font-size: 16px;
     max-width: 330px;
   }
   .lp-provider-wall {
@@ -1079,7 +1098,7 @@ body {
   }
   .lp-provider-wall li {
     padding-block: 20px 16px;
-    font-size: 9px;
+    font-size: 13px;
   }
   .lp-provider-wall li > span:first-child {
     width: 54px;
@@ -1094,22 +1113,22 @@ body {
     gap: 30px;
   }
   .landing .lp-final h2 {
-    font-size: 56px;
+    font-size: 44px;
   }
   .landing .lp-button-large {
     padding: 16px 20px;
-    min-width: 175px;
-    font-size: 14px;
+    min-width: 0;
+    font-size: 16px;
   }
   .lp-footer {
     gap: 24px;
     padding-block: 25px 30px;
   }
   .lp-footer > a:last-child {
-    font-size: 9px;
+    font-size: 13px;
   }
   .landing .lp-footer p {
-    font-size: 9px;
+    font-size: 13px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -51,7 +51,15 @@ export async function invokeCheckpointedTurn(
     resultMessages = result.messages;
   }
   const last = resultMessages.at(-1);
-  return typeof last?.content === "string"
-    ? last.content
-    : JSON.stringify(last?.content ?? "");
+  if (typeof last?.content === "string") return last.content;
+  if (!Array.isArray(last?.content)) return "";
+  return last.content
+    .flatMap((block: unknown) => {
+      if (!block || typeof block !== "object") return [];
+      const part = block as { type?: unknown; text?: unknown };
+      return part.type === "text" && typeof part.text === "string"
+        ? [part.text]
+        : [];
+    })
+    .join("\n");
 }

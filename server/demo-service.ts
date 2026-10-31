@@ -4,71 +4,101 @@ import type { ConnectorDefinition, SupportCase } from "../src/types";
 import { HttpError } from "./config";
 import { Store } from "./store";
 
-const customer: ConnectorDefinition = {
-  id: "demo-customer",
-  name: "Northstar demo application",
-  category: "Observability",
-  description: "Executable local checkout fixture. No external customer data.",
-  authFields: [],
-  docsUrl: "",
-  operations: [
-    {
-      id: "traces",
-      name: "Read checkout traces",
-      write: false,
-      description: "Read request failures observed by the customer.",
-      exampleInput: {},
-    },
-    {
-      id: "deployments",
-      name: "Read recent deployments",
-      write: false,
-      description: "Inspect customer deployment timing.",
-      exampleInput: {},
-    },
-    {
-      id: "probe",
-      name: "Run checkout request",
-      write: false,
-      description:
-        "Execute a checkout probe against the current local service configuration.",
-      exampleInput: {},
-    },
-  ],
-};
-const vendor: ConnectorDefinition = {
-  id: "demo-vendor",
-  name: "Contoso demo control plane",
-  category: "Cloud & data",
-  description: "Private vendor configuration for the local checkout service.",
-  authFields: [],
-  docsUrl: "",
-  operations: [
-    {
-      id: "rollouts",
-      name: "Read tenant rollouts",
-      write: false,
-      description: "Read vendor deployment and backend health information.",
-      exampleInput: {},
-    },
-    {
-      id: "rollback",
-      name: "Restore stable route",
-      write: true,
-      description:
-        "Restore the customer tenant’s stable route in the local fixture. Requires approval.",
-      exampleInput: {},
-    },
-  ],
-};
-
-export function demoDefinitions(item: SupportCase, organizationId: string) {
+export function demoDefinitions(
+  item: SupportCase,
+  organizationId: string,
+): ConnectorDefinition[] {
   if (item.mode !== "simulation") return [];
-  return organizationId === item.customerId
-    ? [customer]
-    : organizationId === item.vendorId
-      ? [vendor]
-      : [];
+  const indexing = item.demoService?.scenario === "google-indexing";
+  if (organizationId === item.customerId)
+    return [
+      {
+        id: "demo-customer",
+        name: indexing ? "Notion indexing service" : "Notion upload service",
+        category: "Observability",
+        description:
+          "Case-scoped local service for diagnosis and verification.",
+        authFields: [],
+        docsUrl: "",
+        operations: [
+          {
+            id: "traces",
+            name: indexing ? "Read indexing traces" : "Read upload traces",
+            write: false,
+            description: "Read request failures observed by the customer.",
+            exampleInput: {},
+          },
+          {
+            id: "deployments",
+            name: "Read recent deployments",
+            write: false,
+            description: "Inspect customer deployment timing.",
+            exampleInput: {},
+          },
+          {
+            id: "probe",
+            name: indexing
+              ? "Check search freshness"
+              : "Test attachment upload",
+            write: false,
+            description:
+              "Run a fresh request against the current local service configuration.",
+            exampleInput: {},
+          },
+          ...(indexing
+            ? [
+                {
+                  id: "reindex",
+                  name: "Replay indexing backlog",
+                  write: true,
+                  description:
+                    "Restore the compatible consumer and replay pending updates. Requires customer approval.",
+                  exampleInput: {},
+                },
+              ]
+            : []),
+        ],
+      },
+    ];
+  if (organizationId === item.vendorId)
+    return [
+      {
+        id: "demo-vendor",
+        name: indexing
+          ? "Google Cloud delivery diagnostics"
+          : "AWS regional request diagnostics",
+        category: "Cloud & data",
+        description:
+          "Private vendor diagnostics for this case’s local service.",
+        authFields: [],
+        docsUrl: "",
+        operations: [
+          {
+            id: "rollouts",
+            name: indexing
+              ? "Inspect delivery health"
+              : "Inspect regional routing",
+            write: false,
+            description:
+              "Read vendor deployment and service health information.",
+            exampleInput: {},
+          },
+          ...(!indexing
+            ? [
+                {
+                  id: "rollback",
+                  name: "Restore stable route",
+                  write: true,
+                  description:
+                    "Restore the previous route for the affected uploads. Requires vendor approval.",
+                  exampleInput: {},
+                },
+              ]
+            : []),
+        ],
+      },
+    ];
+  return [];
 }
 
 export async function executeDemo(
@@ -87,46 +117,67 @@ export async function executeDemo(
     .find((definition) => definition.id === connectorId)
     ?.operations.some((value) => value.id === operation);
   if (!allowed)
-    throw new HttpError(
-      403,
-      "This demo tool belongs to the other organization",
-    );
+    throw new HttpError(403, "This tool belongs to the other organization");
+  const indexing = item.demoService.scenario === "google-indexing";
   if (operation === "deployments")
     return {
       latest: {
-        id: "northstar-42",
+        id: indexing ? "notion-indexer-73" : "notion-upload-42",
         deployedAt: new Date(
-          Date.parse(item.createdAt) - 86_400_000,
+          Date.parse(item.createdAt) - (indexing ? 300_000 : 86_400_000),
         ).toISOString(),
-        changedSinceIncident: false,
+        changedSinceIncident: indexing,
       },
       fixture: true,
     };
   if (operation === "traces")
     return {
-      upstream: "Contoso Cloud checkout API",
+      upstream: indexing ? "Google Cloud Pub/Sub" : "AWS S3",
       failures: item.demoService.probes.filter((probe) => probe.status !== 200),
-      initialSignal: {
-        requestId: "req_8f32",
-        status: 503,
-        region: "us-west-2",
-      },
+      initialSignal: indexing
+        ? {
+            subscription: "notion-page-indexing",
+            backlog: 1842,
+            error: "unsupported_event_schema",
+          }
+        : {
+            requestId: "S3-7FC91A",
+            status: 503,
+            region: "us-west-2",
+            latencyP95Ms: 4800,
+          },
       fixture: true,
     };
   if (operation === "rollouts")
-    return {
-      tenant: item.customerId,
-      rollout: "r-184",
-      changedAt: item.createdAt,
-      currentRoute: item.demoService.route,
-      backends: { stable: "healthy", canary: "unhealthy" },
-      fixture: true,
-    };
-  if (operation === "rollback") {
+    return indexing
+      ? {
+          tenant: item.customerId,
+          deliveryAvailable: true,
+          consumerSchema: item.demoService.route === "stable" ? 3 : 2,
+          eventSchema: 3,
+          backlog: item.demoService.route === "stable" ? 0 : 1842,
+          fixture: true,
+        }
+      : {
+          tenant: item.customerId,
+          rollout: "s3-router-184",
+          changedAt: item.createdAt,
+          currentRoute: item.demoService.route,
+          backends: { stable: "healthy", canary: "unhealthy" },
+          fixture: true,
+        };
+  if (operation === "rollback" || operation === "reindex") {
     await store.updateCase(caseId, (current) => {
       current.demoService!.route = "stable";
     });
-    return { route: "stable", tenant: item.customerId, fixture: true };
+    return indexing
+      ? {
+          consumerSchema: 3,
+          backlog: 0,
+          tenant: item.customerId,
+          fixture: true,
+        }
+      : { route: "stable", tenant: item.customerId, fixture: true };
   }
   const probe = {
     requestId: randomUUID(),
@@ -140,8 +191,12 @@ export async function executeDemo(
     ...probe,
     body:
       probe.status === 200
-        ? { checkout: "accepted" }
-        : { error: "upstream_unavailable" },
+        ? indexing
+          ? { indexed: true, backlog: 0 }
+          : { upload: "accepted" }
+        : indexing
+          ? { error: "indexing_delayed", backlog: 1842 }
+          : { error: "SlowDown" },
     fixture: true,
   };
 }

@@ -1,0 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif&display=swap");
+
+@font-face {
+  font-family: "Sohne";
+  src: url("/fonts/Sohne.woff2") format("woff2");
+  font-weight: 1 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-text: "Sohne", "SF Pro Display", "Helvetica Neue", sans-serif;
+  font-feature-settings: "ss01";
+  font-kerning: normal;
+  -webkit-font-smoothing: antialiased;
+}

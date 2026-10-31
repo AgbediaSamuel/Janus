@@ -11,8 +11,8 @@ import { Store } from "../server/store";
 import { SignalService, signalInput } from "../server/signals";
 
 const alert = {
-  organizationId: "northstar",
-  vendorId: "contoso",
+  organizationId: "notion",
+  vendorId: "aws",
   connectorId: "datadog",
   externalId: "monitor-42:incident-8",
   title: "Checkout API error rate elevated",
@@ -87,7 +87,7 @@ test("incoming alerts create real cases while raw payloads remain private and mi
     assert.equal(response.data.case.evidence[0].simulated, false);
     assert.equal(response.data.case.evidence[0].visibility, "private");
     assert.equal(response.data.case.evidence[0].provenance, undefined);
-    const vendor = await app.request("/api/state?organizationId=contoso");
+    const vendor = await app.request("/api/state?organizationId=aws");
     const partnerCase = vendor.data.cases.find(
       (item: any) => item.id === response.data.case.id,
     );
@@ -131,7 +131,7 @@ test("alerts enforce organization membership, known connector, and distinct regi
       400,
     );
     assert.equal(
-      (await app.request("/api/signals", { ...alert, vendorId: "northstar" }))
+      (await app.request("/api/signals", { ...alert, vendorId: "notion" }))
         .status,
       400,
     );
@@ -148,7 +148,11 @@ test("alerts enforce organization membership, known connector, and distinct regi
       (await app.request("/api/signals", { ...alert, externalId: " " })).status,
       400,
     );
-    assert.equal((await app.store.listCases()).length, 0);
+    assert.equal(
+      (await app.store.listCases()).filter((item) => item.id.startsWith("SIG-"))
+        .length,
+      0,
+    );
   } finally {
     await app.close();
   }
@@ -187,7 +191,11 @@ test("concurrent duplicate alerts retain one case and one investigation turn, in
         throw new Error("Signal investigation did not complete");
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.equal((await app.store.listCases()).length, 1);
+    assert.equal(
+      (await app.store.listCases()).filter((item) => item.id.startsWith("SIG-"))
+        .length,
+      1,
+    );
     assert.equal((await app.store.getCase(id))?.runs?.length, 1);
     assert.deepEqual(calls, [`signal:${id}`]);
     const repeated = await app.request("/api/signals", {
@@ -213,7 +221,11 @@ test("concurrent duplicate alerts retain one case and one investigation turn, in
     const replayed = await reloadedSignals.ingest(signalInput.parse(alert));
     assert.equal(replayed.created, false);
     assert.equal(replayed.case.id, id);
-    assert.equal((await restarted.listCases()).length, 1);
+    assert.equal(
+      (await restarted.listCases()).filter((item) => item.id.startsWith("SIG-"))
+        .length,
+      1,
+    );
     const otherSource = await app.request("/api/signals", {
       ...alert,
       connectorId: "sentry",

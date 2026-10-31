@@ -133,10 +133,18 @@ function ConnectorIcon({
   );
 }
 
+function OrganizationLogo({ id, name }: { id: string; name: string }) {
+  return ["notion", "aws", "google"].includes(id) ? (
+    <ProviderLogo connectorId={id} size={24} />
+  ) : (
+    <span>{name.slice(0, 1).toUpperCase()}</span>
+  );
+}
+
 export default function App() {
   const [workspaceState, setState] = useState<PlatformState | null>(null);
   const [organizationId, setOrganizationId] =
-    useState<OrganizationID>("northstar");
+    useState<OrganizationID>("notion");
   const [view, setView] = useState<View>("overview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [caseTab, setCaseTab] = useState<CaseTab>("activity");
@@ -148,17 +156,13 @@ export default function App() {
   const [busy, setBusy] = useState("");
   const [connector, setConnector] = useState<ConnectorDefinition | null>(null);
   const [newCase, setNewCase] = useState(false);
-  const [caseTitle, setCaseTitle] = useState(
-    "Checkout requests failing for Northstar",
-  );
-  const [caseSummary, setCaseSummary] = useState(
-    "Investigate HTTP 503 errors affecting Northstar checkout requests to Contoso Cloud.",
-  );
+  const [caseTitle, setCaseTitle] = useState("");
+  const [caseSummary, setCaseSummary] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
-  const [caseVendor, setCaseVendor] = useState("");
+  const [caseVendor, setCaseVendor] = useState("aws");
   const initialized = useRef(false);
   const authenticationGeneration = useRef(0);
   const state =
@@ -374,12 +378,6 @@ export default function App() {
         agentRuntime?: string;
       })
     | undefined;
-  const isDemo = runtime?.mode !== "live";
-  const environmentLabel = isDemo ? "Sample workspace" : "Live workspace";
-  const spotlightCase =
-    openCases.find((item) => item.status === "awaiting_approval") ||
-    openCases[0] ||
-    cases[0];
   const viewLabel = {
     overview: "Overview",
     cases: "Cases",
@@ -490,7 +488,7 @@ export default function App() {
         </button>
         <div className="workspace-picker">
           <span className="organization-avatar">
-            {org?.name.slice(0, 1).toUpperCase() || ""}
+            <OrganizationLogo id={organizationId} name={org?.name || ""} />
           </span>
           <div>
             <span className="workspace-label">WORKSPACE</span>
@@ -501,8 +499,9 @@ export default function App() {
             >
               {(
                 workspaceState?.organizations || [
-                  { id: "northstar", name: "Northstar" },
-                  { id: "contoso", name: "Contoso Cloud" },
+                  { id: "notion", name: "Notion" },
+                  { id: "aws", name: "Amazon Web Services" },
+                  { id: "google", name: "Google Cloud" },
                 ]
               )
                 .filter((item) => canAccessOrganization(item.id))
@@ -538,14 +537,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="runtime-dot" />
-          <div>
-            <strong>{environmentLabel}</strong>
-            <span>{org?.name || "Workspace"}</span>
-          </div>
-          <ShieldCheck size={16} />
-        </div>
       </aside>
 
       <div className="main-shell">
@@ -558,7 +549,7 @@ export default function App() {
             >
               <Layers3 size={18} />
             </button>
-            <span>{org?.name || "Northstar"}</span>
+            <span>{org?.name || "Notion"}</span>
             <ChevronRight size={14} />
             <strong>{viewLabel}</strong>
             {selected && (
@@ -569,10 +560,6 @@ export default function App() {
             )}
           </div>
           <div className="topbar-right">
-            <span className="environment-label">
-              <span />
-              {environmentLabel}
-            </span>
             <button
               className="icon-button"
               disabled={!!busy}
@@ -585,7 +572,7 @@ export default function App() {
               />
             </button>
             <span className="user-avatar">
-              {org?.name.slice(0, 1).toUpperCase() || ""}
+              <OrganizationLogo id={organizationId} name={org?.name || ""} />
             </span>
           </div>
         </header>
@@ -646,126 +633,27 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">{org?.name}</div>
-                      <h1>Overview</h1>
-                      <p>Your cases, connected teams, and next decisions.</p>
+                      <h1>Your workspace</h1>
+                      <p>
+                        {openCases.length} open{" "}
+                        {openCases.length === 1 ? "case" : "cases"}
+                        {approvals.length > 0
+                          ? ` · ${approvals.length} ${approvals.length === 1 ? "decision" : "decisions"} to review`
+                          : ""}
+                      </p>
                     </div>
                     <button
                       className="button primary"
                       onClick={() => setNewCase(true)}
                     >
                       <Plus size={16} />
-                      {isDemo ? "Create demo case" : "Create case"}
+                      New case
                     </button>
-                  </div>
-                  {spotlightCase && (
-                    <section className="case-spotlight">
-                      <div className="spotlight-heading">
-                        <div>
-                          <span className="eyebrow">
-                            {isFinished(spotlightCase)
-                              ? "LATEST INVESTIGATION"
-                              : "IN FOCUS"}
-                          </span>
-                          <h2>{spotlightCase.title}</h2>
-                        </div>
-                        <button
-                          className="button"
-                          onClick={() => openCase(spotlightCase.id)}
-                        >
-                          Open case <ArrowUpRight size={15} />
-                        </button>
-                      </div>
-                      <InvestigationMap
-                        supportCase={spotlightCase}
-                        organizations={state.organizations}
-                        organizationId={organizationId}
-                        accessibleOrganizationIds={accessibleIDs}
-                        onOrganizationChange={selectOrganization}
-                        compact
-                      />
-                    </section>
-                  )}
-                  <div className="metric-grid">
-                    <div className="metric">
-                      <span>
-                        Open cases <Layers3 size={16} />
-                      </span>
-                      <strong>
-                        {openCases.length}
-                        <small>in progress</small>
-                      </strong>
-                      <p>Across your organization network</p>
-                    </div>
-                    <div className="metric">
-                      <span>
-                        Needs your attention <ShieldCheck size={16} />
-                      </span>
-                      <strong>
-                        {approvals.length}
-                        <small>pending decisions</small>
-                      </strong>
-                      <p>Human oversight, exactly where it matters</p>
-                    </div>
-                    <div className="metric">
-                      <span>
-                        Resolved cases <CheckCircle2 size={16} />
-                      </span>
-                      <strong>
-                        {
-                          cases.filter((item) => item.status === "resolved")
-                            .length
-                        }
-                        <small>verified outcomes</small>
-                      </strong>
-                      <p>Resolution confirmed by the workflow</p>
-                    </div>
-                    <div className="metric">
-                      <span>
-                        Live connections <Plug size={16} />
-                      </span>
-                      <strong>
-                        {liveConnections.length}
-                        <small>connected sources</small>
-                      </strong>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("integrations")}
-                      >
-                        Manage integrations <ArrowRight size={13} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overview-grid">
-                    <section className="panel recent-cases">
-                      <div className="panel-heading">
-                        <div>
-                          <h2>Case activity</h2>
-                          <p>From first signal to verified resolution.</p>
-                        </div>
-                        <button
-                          className="text-button"
-                          onClick={() => navigate("cases")}
-                        >
-                          View all cases <ArrowRight size={14} />
-                        </button>
-                      </div>
-                      <CaseTable
-                        organizations={state.organizations}
-                        items={cases.slice(0, 5)}
-                        query={query}
-                        caseFilter={caseFilter}
-                        isDemo={isDemo}
-                        openCase={openCase}
-                        setNewCase={setNewCase}
-                      />
-                    </section>
                   </div>
                   {approvals.length > 0 && (
                     <section className="attention-section">
                       <div className="section-heading">
-                        <h2>Ready for your decision</h2>
-                        <span className="count-pill">{approvals.length}</span>
+                        <h2>Needs your decision</h2>
                       </div>
                       {approvals.map((approval) =>
                         renderApprovalCard({
@@ -775,32 +663,26 @@ export default function App() {
                       )}
                     </section>
                   )}
-                  <section className="integration-strip">
-                    <div className="strip-providers" aria-hidden="true">
-                      <ProviderLogo connectorId="slack" size={25} />
-                      <ProviderLogo connectorId="github" size={25} />
-                      <ProviderLogo connectorId="datadog" size={25} />
+                  <section className="panel recent-cases">
+                    <div className="panel-heading">
+                      <h2>Cases</h2>
+                      <button
+                        className="text-button"
+                        onClick={() => navigate("cases")}
+                      >
+                        View all <ArrowRight size={14} />
+                      </button>
                     </div>
-                    <div>
-                      <h3>Your tools, connected.</h3>
-                      <p>Add the sources your agents need to investigate.</p>
-                    </div>
-                    <div className="strip-count">
-                      <strong>{state.connectors.length}</strong>
-                      <span>available integrations</span>
-                    </div>
-                    <button
-                      className="button"
-                      onClick={() => navigate("integrations")}
-                    >
-                      Explore integrations <ArrowUpRight size={15} />
-                    </button>
+                    <CaseTable
+                      organizations={state.organizations}
+                      organizationId={organizationId}
+                      items={cases}
+                      query=""
+                      caseFilter="all"
+                      openCase={openCase}
+                      setNewCase={setNewCase}
+                    />
                   </section>
-                  <div className="workspace-footnote">
-                    <LockKeyhole size={13} />
-                    Private evidence stays in its organization. Only shared
-                    findings cross the boundary.
-                  </div>
                 </>
               )}
 
@@ -817,7 +699,7 @@ export default function App() {
                       onClick={() => setNewCase(true)}
                     >
                       <Plus size={16} />
-                      {isDemo ? "Create demo case" : "Create case"}
+                      New case
                     </button>
                   </div>
                   <div className="list-toolbar">
@@ -853,7 +735,7 @@ export default function App() {
                       items={visibleCases}
                       query={query}
                       caseFilter={caseFilter}
-                      isDemo={isDemo}
+                      organizationId={organizationId}
                       openCase={openCase}
                       setNewCase={setNewCase}
                     />
@@ -881,9 +763,6 @@ export default function App() {
                         {selected.severity}
                       </span>
                       <Status value={selected.status} />
-                      <span className="subtle-label">
-                        {selected.mode === "simulation" ? "SIMULATION" : "LIVE"}
-                      </span>
                     </div>
                     <h1>{selected.title}</h1>
                     <p>{selected.summary}</p>
@@ -898,14 +777,54 @@ export default function App() {
                         at {time(selected.createdAt)}
                       </span>
                       <div className="button-row">
+                        {!isFinished(selected) && (
+                          <button
+                            className="button primary"
+                            disabled={
+                              !!busy ||
+                              selected.status === "awaiting_approval" ||
+                              ((selected.mode !== "simulation" ||
+                                !!selected.runs?.length) &&
+                                !runtime?.agentsConfigured)
+                            }
+                            onClick={() => {
+                              const guided =
+                                selected.mode === "simulation" &&
+                                !selected.runs?.length;
+                              void act("investigate", () =>
+                                api(
+                                  `/api/cases/${selected.id}/${guided ? "advance" : "investigate"}`,
+                                  { organizationId },
+                                ),
+                              );
+                            }}
+                          >
+                            {busy === "investigate" ? (
+                              <Loader2 size={15} className="spin" />
+                            ) : (
+                              <ArrowRight size={15} />
+                            )}
+                            {selected.status === "awaiting_approval"
+                              ? "Waiting for decision"
+                              : "Continue investigation"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <details className="investigation-details">
+                    <summary>
+                      Investigation details <ChevronDown size={15} />
+                    </summary>
+                    {runtime?.agentsConfigured &&
+                      selected.mode === "simulation" &&
+                      selected.step === 0 &&
+                      !selected.runs?.length &&
+                      !isFinished(selected) &&
+                      selected.status !== "awaiting_approval" && (
                         <button
-                          className="button"
-                          disabled={!!busy || !runtime?.agentsConfigured}
-                          title={
-                            !runtime?.agentsConfigured
-                              ? "Configure an agent provider on the server to enable live investigation."
-                              : "Run the connected agent runtime"
-                          }
+                          className="button connected-agent-action"
+                          disabled={!!busy}
                           onClick={() =>
                             act(
                               "investigate",
@@ -913,55 +832,22 @@ export default function App() {
                                 api(`/api/cases/${selected.id}/investigate`, {
                                   organizationId,
                                 }),
-                              "Investigation queued. The case will update as your agents work.",
+                              "Investigation queued.",
                             )
                           }
                         >
-                          <ArrowRight size={15} />
-                          {busy === "investigate"
-                            ? "Investigating…"
-                            : "Run agent investigation"}
+                          <ArrowRight size={14} />
+                          Use connected agents
                         </button>
-                        <button
-                          className="button primary"
-                          hidden={selected.mode !== "simulation"}
-                          disabled={
-                            !!busy ||
-                            !!selected.runs?.length ||
-                            isFinished(selected) ||
-                            selected.status === "awaiting_approval"
-                          }
-                          onClick={() =>
-                            act("advance", () =>
-                              api(`/api/cases/${selected.id}/advance`, {
-                                organizationId,
-                              }),
-                            )
-                          }
-                        >
-                          {busy === "advance" ? (
-                            <Loader2 size={15} className="spin" />
-                          ) : (
-                            <Play size={14} />
-                          )}
-                          {selected.runs?.length
-                            ? "Agent-driven case"
-                            : isFinished(selected)
-                              ? "Workflow complete"
-                              : selected.status === "awaiting_approval"
-                                ? "Waiting for decision"
-                                : "Advance demo"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <InvestigationMap
-                    supportCase={selected}
-                    organizations={state.organizations}
-                    organizationId={organizationId}
-                    accessibleOrganizationIds={accessibleIDs}
-                    onOrganizationChange={selectOrganization}
-                  />
+                      )}
+                    <InvestigationMap
+                      supportCase={selected}
+                      organizations={state.organizations}
+                      organizationId={organizationId}
+                      accessibleOrganizationIds={accessibleIDs}
+                      onOrganizationChange={selectOrganization}
+                    />
+                  </details>
                   <div className="case-layout">
                     <section className="case-main">
                       <div className="case-tabs">
@@ -980,7 +866,11 @@ export default function App() {
                             ) : (
                               <MessageSquare size={15} />
                             )}
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                            {tab === "activity"
+                              ? "Thread"
+                              : tab === "conversation"
+                                ? "Messages"
+                                : "Evidence"}
                             {tab === "evidence" && (
                               <span className="count-pill">
                                 {
@@ -1071,8 +961,8 @@ export default function App() {
                                     : "No activity in this view."}
                                 </h3>
                                 <p>
-                                  Advance the demo to see the investigation
-                                  develop.
+                                  Continue the investigation to collect the next
+                                  update.
                                 </p>
                               </div>
                             )}
@@ -1113,7 +1003,7 @@ export default function App() {
                                     </span>
                                     <span>
                                       {item.simulated
-                                        ? "Sample evidence"
+                                        ? "Evidence"
                                         : item.provenance
                                           ? "Tool receipt"
                                           : "Reported evidence"}
@@ -1154,7 +1044,10 @@ export default function App() {
                               <span
                                 className={`organization-avatar ${item.id === selected.vendorId ? "vendor" : ""}`}
                               >
-                                {item.name.slice(0, 1).toUpperCase()}
+                                <OrganizationLogo
+                                  id={item.id}
+                                  name={item.name}
+                                />
                               </span>
                               <div>
                                 <strong>{item.name}</strong>
@@ -1167,98 +1060,6 @@ export default function App() {
                               )}
                             </div>
                           ))}
-                      </div>
-                      <div className="detail-block">
-                        <h3>Case context</h3>
-                        <dl>
-                          <div>
-                            <dt>Workflow</dt>
-                            <dd>
-                              {selected.mode === "simulation"
-                                ? "Checkout API failure"
-                                : "Agent investigation"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Stage</dt>
-                            <dd>{selected.step + 1}</dd>
-                          </div>
-                          <div>
-                            <dt>Environment</dt>
-                            <dd>
-                              {selected.mode === "simulation"
-                                ? "Simulation"
-                                : "Live"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Evidence</dt>
-                            <dd>
-                              {
-                                selected.evidence.filter(
-                                  (item) =>
-                                    item.visibility === "shared" ||
-                                    item.organizationId === organizationId,
-                                ).length
-                              }{" "}
-                              visible records
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Updated</dt>
-                            <dd>{time(selected.updatedAt)}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                      <div className="boundary-note">
-                        <Fingerprint size={23} />
-                        <h3>Your context stays yours.</h3>
-                        <p>
-                          You are viewing {org?.name}'s side of this case.
-                          Internal evidence is scoped to its organization.
-                        </p>
-                      </div>
-                      <div className="detail-block">
-                        <h3>Connected sources</h3>
-                        {connections.filter(
-                          (item) => item.status === "connected",
-                        ).length ? (
-                          connections
-                            .filter((item) => item.status === "connected")
-                            .map((item) => {
-                              const definition = state.connectors.find(
-                                (def) => def.id === item.connectorId,
-                              );
-                              return (
-                                definition && (
-                                  <button
-                                    className="source-row"
-                                    key={item.id}
-                                    onClick={() => setConnector(definition)}
-                                  >
-                                    <ConnectorIcon
-                                      connector={definition}
-                                      small
-                                    />
-                                    <span>{definition.name}</span>
-                                    <span className="subtle-label">
-                                      {item.mode === "live" ? "LIVE" : "DEMO"}
-                                    </span>
-                                  </button>
-                                )
-                              );
-                            })
-                        ) : (
-                          <p className="muted small-copy">
-                            No sources connected for this organization.
-                          </p>
-                        )}
-                        <button
-                          className="text-button"
-                          onClick={() => navigate("integrations")}
-                        >
-                          Manage sources <ArrowRight size={13} />
-                        </button>
                       </div>
                     </aside>
                   </div>
@@ -1275,7 +1076,7 @@ export default function App() {
                     </div>
                     <span className="integration-total">
                       <Plug size={16} />
-                      {liveConnections.length} live connections
+                      {liveConnections.length} connected
                     </span>
                   </div>
                   <div className="catalog-top">
@@ -1363,9 +1164,7 @@ export default function App() {
                                     className={`connection-badge ${connection.mode === "live" ? "live" : ""}`}
                                   >
                                     <span />
-                                    {connection.mode === "live"
-                                      ? "Live"
-                                      : "Demo"}
+                                    Connected
                                   </span>
                                 ) : connection?.status === "error" ? (
                                   <span className="connection-badge error">
@@ -1423,9 +1222,6 @@ export default function App() {
                       <h1>Your network</h1>
                       <p>Shared investigations. Independent workspaces.</p>
                     </div>
-                    <span className="subtle-label">
-                      {isDemo ? "DEMO NETWORK" : "ORGANIZATION NETWORK"}
-                    </span>
                   </div>
                   <section className="network-canvas">
                     <div className="network-grid-bg" />
@@ -1435,7 +1231,7 @@ export default function App() {
                           <span
                             className={`organization-avatar large ${index ? "vendor" : ""}`}
                           >
-                            {index ? "C" : "N"}
+                            <OrganizationLogo id={item.id} name={item.name} />
                           </span>
                           <span className="subtle-label">{item.role}</span>
                         </div>
@@ -1476,68 +1272,7 @@ export default function App() {
                         </div>
                       </div>
                     ))}
-                    <div className="network-bridge">
-                      <div className="bridge-line" />
-                      <div className="bridge-icon">
-                        <Workflow size={25} />
-                      </div>
-                      <strong>Shared case</strong>
-                      <span>Evidence · requests · decisions</span>
-                    </div>
                   </section>
-                  <div className="network-info-grid">
-                    <section className="panel info-panel">
-                      <ShieldCheck size={22} />
-                      <h2>Explicit boundaries</h2>
-                      <p>
-                        Private investigations remain with their organization.
-                        Shared findings and requests form the common case
-                        history.
-                      </p>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("cases")}
-                      >
-                        Explore cases <ArrowRight size={14} />
-                      </button>
-                    </section>
-                    <section className="panel info-panel">
-                      <Plug size={22} />
-                      <h2>Your tools, your context</h2>
-                      <p>
-                        Configure each organization’s observability,
-                        collaboration, and data connections independently.
-                      </p>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("integrations")}
-                      >
-                        Manage integrations <ArrowRight size={14} />
-                      </button>
-                    </section>
-                    <section className="panel info-panel">
-                      <Server size={22} />
-                      <h2>Runtime configuration</h2>
-                      <dl>
-                        <div>
-                          <dt>Case store</dt>
-                          <dd>{state.runtime.caseStore}</dd>
-                        </div>
-                        <div>
-                          <dt>Coordination</dt>
-                          <dd>{state.runtime.relay}</dd>
-                        </div>
-                        <div>
-                          <dt>Agent provider</dt>
-                          <dd>
-                            {runtime?.agentsConfigured
-                              ? "Configured"
-                              : "Not configured"}
-                          </dd>
-                        </div>
-                      </dl>
-                    </section>
-                  </div>
                 </>
               )}
             </>
@@ -1582,15 +1317,9 @@ export default function App() {
                 <X size={19} />
               </button>
             </div>
-            <div className="eyebrow">
-              {isDemo ? "NEW SIMULATION" : "NEW CASE"}
-            </div>
+            <div className="eyebrow">NEW CASE</div>
             <h2 id="new-case-title">Start a shared investigation.</h2>
-            <p>
-              {isDemo
-                ? "Create a case between Northstar and Contoso Cloud using the checkout failure scenario."
-                : "Open a shared investigation with a company in your network."}
-            </p>
+            <p>Open a shared investigation with a company in your network.</p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -1598,34 +1327,45 @@ export default function App() {
                   const created = await api<SupportCase>("/api/cases", {
                     title: caseTitle,
                     summary: caseSummary,
-                    ...(!isDemo
-                      ? { customerId: organizationId, vendorId: caseVendor }
-                      : {}),
+                    customerId: organizationId,
+                    vendorId:
+                      caseVendor ||
+                      state?.organizations.find(
+                        (item) =>
+                          item.id !== organizationId &&
+                          item.role.toLowerCase() === "vendor",
+                      )?.id,
                   });
                   setNewCase(false);
                   openCase(created.id);
                 });
               }}
             >
-              {!isDemo && (
-                <label>
-                  Vendor organization
-                  <select
-                    required
-                    value={caseVendor}
-                    onChange={(event) => setCaseVendor(event.target.value)}
-                  >
-                    <option value="">Choose an organization</option>
-                    {state?.organizations
-                      .filter((item) => item.id !== organizationId)
-                      .map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              )}
+              <label>
+                Vendor organization
+                <select
+                  required
+                  value={
+                    caseVendor ||
+                    state?.organizations.find(
+                      (item) =>
+                        item.id !== organizationId &&
+                        item.role.toLowerCase() === "vendor",
+                    )?.id ||
+                    ""
+                  }
+                  onChange={(event) => setCaseVendor(event.target.value)}
+                >
+                  <option value="">Choose an organization</option>
+                  {state?.organizations
+                    .filter((item) => item.id !== organizationId)
+                    .map((item) => (
+                      <option value={item.id} key={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <label>
                 Case title
                 <input
@@ -1644,19 +1384,13 @@ export default function App() {
                   rows={3}
                 />
               </label>
-              <div className="form-note">
-                <Zap size={15} />
-                {isDemo
-                  ? "Demo steps use seeded evidence. Live investigation is a separate action."
-                  : "Agents use your configured connections. External writes require human approval."}
-              </div>
               <button className="button primary full-width" disabled={!!busy}>
                 {busy === "create" ? (
                   <Loader2 size={15} className="spin" />
                 ) : (
                   <Plus size={15} />
                 )}
-                {isDemo ? "Create demo case" : "Create case"}
+                New case
               </button>
             </form>
           </section>
@@ -1679,7 +1413,7 @@ export default function App() {
               <span className="eyebrow">
                 {evidence.source} ·{" "}
                 {evidence.simulated
-                  ? "SAMPLE EVIDENCE"
+                  ? "EVIDENCE"
                   : evidence.provenance
                     ? "TOOL RECEIPT"
                     : "REPORTED EVIDENCE"}
@@ -1730,9 +1464,7 @@ function TimelineEvent({ event }: { event: CaseEvent }) {
                 : CircleDot;
   return (
     <article className={`timeline-event event-${event.type}`}>
-      <span
-        className={`timeline-icon ${event.organizationId === "contoso" ? "vendor" : ""}`}
-      >
+      <span className="timeline-icon">
         <Icon size={16} />
       </span>
       <div className="event-content">
@@ -1978,7 +1710,7 @@ function ConnectorDrawer({
             <CircleDot size={14} />
             {connection
               ? connection.status === "connected"
-                ? `${connection.mode === "live" ? "Live" : "Demo"} connection`
+                ? "Connected"
                 : connection.status === "error"
                   ? "Connection needs attention"
                   : "Not configured"
@@ -2179,7 +1911,7 @@ function CaseTable({
   items,
   query,
   caseFilter,
-  isDemo,
+  organizationId,
   openCase,
   setNewCase,
 }: {
@@ -2187,7 +1919,7 @@ function CaseTable({
   items: SupportCase[];
   query: string;
   caseFilter: string;
-  isDemo: boolean;
+  organizationId: string;
   openCase: (id: string) => void;
   setNewCase: (value: boolean) => void;
 }) {
@@ -2196,7 +1928,7 @@ function CaseTable({
       <div className="table-head" role="row">
         <span>Case</span>
         <span>Status</span>
-        <span>Participants</span>
+        <span>Working with</span>
         <span>Updated</span>
         <span />
       </div>
@@ -2218,17 +1950,33 @@ function CaseTable({
           </span>
           <Status value={item.status} />
           <span className="table-participants">
-            <span className="mini-avatar">
-              {organizations
-                .find((organization) => organization.id === item.customerId)
-                ?.name.slice(0, 1)}
+            <OrganizationLogo
+              id={
+                item.customerId === organizationId
+                  ? item.vendorId
+                  : item.customerId
+              }
+              name={
+                organizations.find(
+                  (org) =>
+                    org.id ===
+                    (item.customerId === organizationId
+                      ? item.vendorId
+                      : item.customerId),
+                )?.name || ""
+              }
+            />
+            <span>
+              {
+                organizations.find(
+                  (org) =>
+                    org.id ===
+                    (item.customerId === organizationId
+                      ? item.vendorId
+                      : item.customerId),
+                )?.name
+              }
             </span>
-            <span className="mini-avatar vendor">
-              {organizations
-                .find((organization) => organization.id === item.vendorId)
-                ?.name.slice(0, 1)}
-            </span>
-            <span>2 organizations</span>
           </span>
           <span className="muted">{time(item.updatedAt)}</span>
           <ChevronRight size={16} />
@@ -2245,14 +1993,12 @@ function CaseTable({
           <p>
             {query || caseFilter !== "all"
               ? "Try a different search or status."
-              : isDemo
-                ? "Create a demo case to see two agents investigate a shared issue."
-                : "Create a case to coordinate an investigation with your counterpart."}
+              : "Create a case to coordinate an investigation with your counterpart."}
           </p>
           {!query && caseFilter === "all" && (
             <button className="button primary" onClick={() => setNewCase(true)}>
               <Plus size={15} />
-              {isDemo ? "Create demo case" : "Create case"}
+              New case
             </button>
           )}
         </div>

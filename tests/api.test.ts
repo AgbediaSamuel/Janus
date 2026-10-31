@@ -52,21 +52,19 @@ test("guided incident keeps private evidence separate and requires a single vend
     const result = await request(`/api/cases/${id}/advance`, {});
     assert.equal(result.status, 200);
   }
-  const customer = (await request("/api/state?organizationId=northstar")).data;
-  const vendor = (await request("/api/state?organizationId=contoso")).data;
+  const customer = (await request("/api/state?organizationId=notion")).data;
+  const vendor = (await request("/api/state?organizationId=aws")).data;
   const customerCase = customer.cases.find((item: any) => item.id === id);
   const vendorCase = vendor.cases.find((item: any) => item.id === id);
   assert.equal(customerCase.approvals.length, 0);
   assert.equal(
-    customerCase.evidence.some(
-      (item: any) => item.organizationId === "contoso",
-    ),
+    customerCase.evidence.some((item: any) => item.organizationId === "aws"),
     false,
   );
   assert.equal(
     vendorCase.evidence.some(
       (item: any) =>
-        item.organizationId === "northstar" && item.visibility === "private",
+        item.organizationId === "notion" && item.visibility === "private",
     ),
     false,
   );
@@ -83,7 +81,7 @@ test("guided incident keeps private evidence separate and requires a single vend
   assert.deepEqual(decisions.map((result) => result.status).sort(), [200, 409]);
   const final = await request(`/api/cases/${id}/advance`, {});
   assert.equal(final.data.status, "resolved");
-  assert.match(final.data.outcome, /Live recovery has not been tested/);
+  assert.match(final.data.outcome, /upload probe returned HTTP 200/);
   const restarted = new Store();
   await restarted.initialize();
   assert.equal((await restarted.getCase(id))?.status, "resolved");
@@ -91,13 +89,13 @@ test("guided incident keeps private evidence separate and requires a single vend
 
 test("credentials are never returned in state and connector writes cannot run through access checks", async () => {
   const created = await request("/api/connections", {
-    organizationId: "northstar",
+    organizationId: "notion",
     connectorId: "slack",
     credentials: { token: "test-secret-never-return" },
   });
   assert.equal(created.status, 201);
   assert.equal(created.data.status, "not_configured");
-  const state = await request("/api/state?organizationId=northstar");
+  const state = await request("/api/state?organizationId=notion");
   assert.equal(
     JSON.stringify(state.data).includes("test-secret-never-return"),
     false,
@@ -107,7 +105,7 @@ test("credentials are never returned in state and connector writes cannot run th
     input: { channel: "C123", text: "must not send" },
   });
   assert.equal(testWrite.status, 400);
-  const vendor = await request("/api/state?organizationId=contoso");
+  const vendor = await request("/api/state?organizationId=aws");
   assert.equal(vendor.data.connections.length, 0);
 });
 
@@ -132,15 +130,12 @@ test("encrypted credentials are bound to their organization", () => {
   const oldKey = process.env.JANUS_ENCRYPTION_KEY;
   process.env.JANUS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
   try {
-    const encrypted = encryptCredentials(
-      { token: "private-token" },
-      "northstar",
-    );
+    const encrypted = encryptCredentials({ token: "private-token" }, "notion");
     assert.equal(encrypted.includes("private-token"), false);
-    assert.deepEqual(decryptCredentials(encrypted, "northstar"), {
+    assert.deepEqual(decryptCredentials(encrypted, "notion"), {
       token: "private-token",
     });
-    assert.throws(() => decryptCredentials(encrypted, "contoso"));
+    assert.throws(() => decryptCredentials(encrypted, "aws"));
   } finally {
     if (oldKey === undefined) delete process.env.JANUS_ENCRYPTION_KEY;
     else process.env.JANUS_ENCRYPTION_KEY = oldKey;

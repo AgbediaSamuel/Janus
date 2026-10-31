@@ -118,6 +118,7 @@ export interface SupportCase {
   approvals: Approval[];
   outcome?: string;
   demoService?: {
+    scenario?: "aws-uploads" | "google-indexing";
     route: "canary" | "stable";
     probes: { requestId: string; status: number; at: string }[];
   };

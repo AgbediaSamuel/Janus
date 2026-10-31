@@ -227,12 +227,10 @@ export async function createApp(
     const input = signalInput.parse(req.body);
     requireOrganization(res, input.organizationId);
     const result = await signals.ingest(input);
-    res
-      .status(result.created ? 201 : 200)
-      .json({
-        ...result,
-        case: projectCase(result.case, input.organizationId),
-      });
+    res.status(result.created ? 201 : 200).json({
+      ...result,
+      case: projectCase(result.case, input.organizationId),
+    });
   });
 
   app.post("/api/cases", async (req, res) => {
@@ -362,7 +360,12 @@ export async function createApp(
         throw error;
       }
     }
-    if (approval.action && decision === "approved" && agentsAvailable()) {
+    if (
+      approval.action &&
+      item.step === 0 &&
+      decision === "approved" &&
+      agentsAvailable()
+    ) {
       await investigations.enqueue(
         item.id,
         approval.organizationId,

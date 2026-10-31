@@ -7,8 +7,8 @@ curl --request POST "$JANUS_API_URL/api/signals" \
   --header "Authorization: Bearer $JANUS_USER_JWT" \
   --header 'Content-Type: application/json' \
   --data '{
-    "organizationId": "northstar",
-    "vendorId": "contoso",
+    "organizationId": "notion",
+    "vendorId": "aws",
     "connectorId": "datadog",
     "externalId": "monitor-42:incident-8",
     "title": "Checkout API error rate elevated",

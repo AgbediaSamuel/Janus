@@ -22,7 +22,7 @@ For hosted deployment, use the Terse CLI with `server/runtime/actor/src/actor.ts
 
 ## Agent Relay
 
-Set `RELAY_WORKSPACE_KEY` and `RELAY_AGENT_TOKENS_JSON`, a JSON object mapping Janus organization IDs to separately provisioned Relay agent tokens. `RELAY_NORTHSTAR_TOKEN` and `RELAY_CONTOSO_TOKEN` are aliases for the example organizations. `RELAY_BASE_URL` optionally changes the Relay endpoint. Agents must already be registered; reconnecting does not create or rename agents.
+Set `RELAY_WORKSPACE_KEY` and `RELAY_AGENT_TOKENS_JSON`, a JSON object mapping Janus organization IDs to separately provisioned Relay agent tokens. `RELAY_NOTION_TOKEN`, `RELAY_AWS_TOKEN`, and `RELAY_GOOGLE_TOKEN` are aliases for the local organizations. The older Northstar/Contoso environment aliases remain supported for existing installations. `RELAY_BASE_URL` optionally changes the Relay endpoint. Agents must already be registered; reconnecting does not create or rename agents.
 
 `sendRelayMessage({caseId,eventId,from,to,text})` sends an actual direct message with a stable idempotency key. Distinct organizations must have distinct authenticated Relay agent identities. `receiveRelayMessages({organizationId,partnerId,caseId,onMessage})` reads the current durable inbox. `subscribeRelayMessages({organizationId,partnerId,onMessage,signal})` streams queued and new deliveries across cases. Both verify the authenticated sender ID, await `onMessage`, and only then acknowledge the delivery. The handler must validate case participants, persist the incoming event, and deduplicate by delivery/message identity before returning. Unrecognized senders are not acknowledged by these functions.
 

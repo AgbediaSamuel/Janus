@@ -15,7 +15,8 @@
     "build": "pnpm typecheck && vite build",
     "start": "tsx --env-file-if-exists=.env server/index.ts",
     "test": "tsx --test tests/*.test.ts",
-    "dev:actors": "pnpm dlx bun@1.4.4 server/runtime/actor/dev.ts"
+    "dev:actors": "pnpm dlx bun@1.4.4 server/runtime/actor/dev.ts",
+    "smoke:agent": "tsx --env-file-if-exists=.env scripts/smoke-agent.ts"
   },
   "dependencies": {
     "@agent-relay/sdk": "15.0.1",
