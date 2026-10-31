@@ -889,7 +889,8 @@ test("legacy agent receipt events do not enqueue a second turn when their old ru
     });
     const after = await fixture.store.getCase(item.id);
     assert.deepEqual(after?.runs, item.runs);
-    assert.deepEqual(after?.events, item.events);
+    assert.equal(after?.events.length, item.events.length);
+    assert.equal(after?.events.find((entry) => entry.id === "relay:legacy-message")?.delivery?.status, "received");
     assert.equal(after?.status, item.status);
   } finally {
     service.close();
@@ -1030,6 +1031,108 @@ test("single worker selects the oldest pending turn across cases", async () => {
       "newer followup",
       "latest followup",
     ]);
+  } finally {
+    service.close();
+    await fixture.cleanup();
+  }
+});
+
+test("outbound Relay messages become one shared received bubble in either receipt ordering", async () => {
+  for (const receiptFirst of [false, true]) {
+    const fixture = await temporaryStore();
+    let sent: any;
+    const service = new InvestigationService(
+      fixture.store,
+      factory(async ({ tools, organizationId }) => {
+        if (organizationId === "notion")
+          await tools.sendPartnerMessage({
+            text: "Share the scoped diagnostic",
+          });
+      }),
+      async (input) => {
+        sent = {
+          ...input,
+          messageId: "correlated-message",
+          deliveryId: "correlated-message",
+          createdAt: new Date().toISOString(),
+        };
+        if (receiptFirst) await service.acceptMessage(sent);
+        return { messageId: sent.messageId, createdAt: sent.createdAt };
+      },
+    );
+    try {
+      const item = newCase();
+      await fixture.store.createCase(item);
+      await service.enqueue(item.id, "notion", "Send a partner update");
+      await until(
+        async () =>
+          (await fixture.store.getCase(item.id))?.runs?.[0]?.status ===
+          "completed",
+      );
+      if (!receiptFirst) {
+        const pending = (await fixture.store.getCase(item.id))!.events.find(
+          (entry) => entry.id === `sent:${sent.eventId}`,
+        )!;
+        assert.equal(pending.delivery?.status, "accepted");
+        assert.equal(pending.delivery?.messageId, "correlated-message");
+        assert.equal(pending.recipientOrganizationId, "aws");
+        assert.equal(pending.visibility, "private");
+        await service.acceptMessage(sent);
+      }
+      await until(async () =>
+        (await fixture.store.getCase(item.id))!.runs!.every(
+          (run) => run.status === "completed",
+        ),
+      );
+      const updated = (await fixture.store.getCase(item.id))!;
+      assert.equal(
+        updated.events.filter(
+          (entry) => entry.body === "Share the scoped diagnostic",
+        ).length,
+        1,
+      );
+      const received = updated.events.find(
+        (entry) => entry.id === "relay:correlated-message",
+      )!;
+      assert.equal(received.visibility, "shared");
+      assert.equal(received.delivery?.status, "received");
+      assert(received.delivery?.receivedAt);
+      assert.equal(updated.runs?.length, 2);
+    } finally {
+      service.close();
+      await fixture.cleanup();
+    }
+  }
+});
+
+test("an uncertain outbound send records no false receipt or partner turn", async () => {
+  const fixture = await temporaryStore();
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async ({ tools }) => {
+      await tools.sendPartnerMessage({ text: "Pending diagnostic update" });
+    }),
+    async () => {
+      throw new Error("Provider timeout");
+    },
+  );
+  try {
+    const item = newCase();
+    await fixture.store.createCase(item);
+    await service.enqueue(item.id, "notion", "Send an update");
+    await until(
+      async () =>
+        (await fixture.store.getCase(item.id))?.runs?.[0]?.status === "failed",
+    );
+    const updated = (await fixture.store.getCase(item.id))!;
+    const sent = updated.events.find(
+      (entry) => entry.body === "Pending diagnostic update",
+    )!;
+    assert.equal(sent.delivery?.status, "unconfirmed");
+    assert.equal(sent.delivery?.messageId, undefined);
+    assert.equal(sent.visibility, "private");
+    assert.equal(sent.recipientOrganizationId, "aws");
+    assert.equal(updated.runs?.length, 1);
   } finally {
     service.close();
     await fixture.cleanup();

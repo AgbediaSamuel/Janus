@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   ChevronDown,
+  Clock3,
   FileText,
   LockKeyhole,
   MessageSquare,
@@ -13,6 +14,7 @@ import {
 } from "./Icons";
 import ProviderLogo from "./ProviderLogo";
 import "./CaseTimeline.css";
+import { messageAudience } from "./messageAudience";
 
 interface CaseTimelineProps {
   supportCase: SupportCase;
@@ -75,8 +77,6 @@ export default function CaseTimeline({
 }: CaseTimelineProps) {
   const [filter, setFilter] = useState<TraceFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const organizationName = (id?: string) =>
-    organizations.find((item) => item.id === id)?.name || "this organization";
   const counterpartId =
     organizationId === supportCase.vendorId
       ? supportCase.customerId
@@ -154,10 +154,12 @@ export default function CaseTimeline({
                   day: "numeric",
                 })
               : null;
-          const audience =
-            event.visibility === "private"
-              ? `Only ${organizationName(event.organizationId || organizationId)}`
-              : `Shared with ${organizationName(counterpartId)}`;
+          const audience = messageAudience(
+            event,
+            organizations,
+            organizationId,
+            counterpartId,
+          );
           return (
             <li className="trace-item" key={event.id}>
               {currentDate !== previousDate && (
@@ -198,10 +200,14 @@ export default function CaseTimeline({
                         </span>
                       )}
                       <span>
-                        {event.visibility === "private" && (
-                          <LockKeyhole size={11} />
+                        {audience.pending ? (
+                          <Clock3 size={11} />
+                        ) : (
+                          event.visibility === "private" && (
+                            <LockKeyhole size={11} />
+                          )
                         )}{" "}
-                        {audience}
+                        {audience.label}
                       </span>
                     </span>
                   </span>

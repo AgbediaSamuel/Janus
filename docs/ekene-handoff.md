@@ -45,6 +45,10 @@ Append `/cases/<case-id>` to open the same investigation from either participant
 
 ## The recording flow
 
+Open `/admin` and confirm reset for the automatic recording entry. Reset restores the local fixtures and introduces a new upload-failure monitoring signal. A real monitoring agent reads that signal and calls `open_support_case`; that creates a fresh case and queues the customer investigator. The admin result links directly to the same case in Notion and AWS. Each reset uses a new signal/checkpoint identity, so previous conversation history is not replayed. The incident is repeatable; the agents' wording and timing are live, not a scripted video replay. Missing runtime configuration is shown explicitly without claiming a case was opened.
+
+Outgoing messages now distinguish Relay acceptance from confirmed recipient receipt. One invalid or stale message no longer shuts down the organization-pair listener. A received message replaces its matching outgoing bubble using exact IDs.
+
 The four original JAN-1041 through JAN-1044 cases contain seeded histories. They are useful for showing the interface and human conversations in Slack, Teams, Outlook, and Gmail. They are not proof of live agent messaging. You can now message agents on these cases. Once a case has guided progress, these turns can read the case and converse, but cannot change its recovery steps, approvals, or status.
 
 For real model interaction, create a **new case** in Notion with AWS as the vendor. Creating it starts the investigation automatically when the model/database configuration is present. Open its **Conversation** tab. Actual agent messages and working status appear there; the UI refreshes active cases every three seconds. There is no artificial typing animation or generated transcript playback.

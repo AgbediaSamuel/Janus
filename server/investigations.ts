@@ -92,6 +92,7 @@ export class InvestigationService {
               : "Message to partner agent",
           body: text,
           visibility: "shared",
+          delivery: { status: "accepted", messageId: sent.messageId },
           createdAt: sent.createdAt || new Date().toISOString(),
         });
       if (target === "case") {
@@ -306,6 +307,15 @@ export class InvestigationService {
         throw new HttpError(403, "Message participants do not match the case");
       const messageKey = `relay:${message.messageId}`;
       const existing = item.events.find((entry) => entry.id === messageKey);
+      item.events = item.events.filter(
+        (entry) => entry.id !== `sent:${message.eventId}`,
+      );
+      if (existing)
+        existing.delivery = {
+          status: "received",
+          messageId: message.messageId,
+          receivedAt: existing.delivery?.receivedAt || new Date().toISOString(),
+        };
       if (existing && message.actorType !== "human") return;
       if (!existing)
         item.events.push({
@@ -328,6 +338,11 @@ export class InvestigationService {
           body: message.text,
           createdAt: message.createdAt || new Date().toISOString(),
           visibility: "shared",
+          delivery: {
+            status: "received",
+            messageId: message.messageId,
+            receivedAt: new Date().toISOString(),
+          },
         });
       item.runs ??= [];
       if (
@@ -553,16 +568,44 @@ export class InvestigationService {
         },
         sendPartnerMessage: async ({ text }) => {
           const eventId = randomUUID();
-          const result = await this.relaySender({
-            caseId,
-            eventId,
-            from: organizationId,
-            to: partnerId,
-            actorType: "agent",
-            actor: agentName,
-            text,
-          });
+          let result: Awaited<ReturnType<typeof sendRelayMessage>>;
+          try {
+            result = await this.relaySender({
+              caseId,
+              eventId,
+              from: organizationId,
+              to: partnerId,
+              actorType: "agent",
+              actor: agentName,
+              text,
+            });
+          } catch (error) {
+            await this.store.updateCase(caseId, (current) => {
+              current.events.push({
+                id: `sent:${eventId}`,
+                type: "message",
+                organizationId,
+                actor: agentName,
+                channel: "relay",
+                actorType: "agent",
+                target: "agent",
+                recipientOrganizationId: partnerId,
+                title: "Partner delivery unconfirmed",
+                body: text,
+                createdAt: new Date().toISOString(),
+                visibility: "private",
+                delivery: { status: "unconfirmed" },
+              });
+            });
+            throw error;
+          }
           await this.store.updateCase(caseId, (current) => {
+            if (
+              current.events.some(
+                (entry) => entry.id === `relay:${result.messageId}`,
+              )
+            )
+              return;
             current.events.push({
               id: `sent:${eventId}`,
               type: "message",
@@ -570,10 +613,13 @@ export class InvestigationService {
               actor: agentName,
               channel: "relay",
               actorType: "agent",
-              title: "Message submitted to Agent Relay",
+              target: "agent",
+              recipientOrganizationId: partnerId,
+              title: "Sent to partner; awaiting receipt",
               body: text,
               createdAt: result.createdAt || new Date().toISOString(),
               visibility: "private",
+              delivery: { status: "accepted", messageId: result.messageId },
             });
           });
           return result;

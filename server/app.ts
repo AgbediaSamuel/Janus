@@ -20,6 +20,7 @@ import { executeDemo } from "./demo-service";
 import { executeFixtureConnection } from "./fixture-connections";
 import { configuredRelayTokens, sendRelayMessage } from "./runtime/relay";
 import { SignalService, signalInput } from "./signals";
+import type { runDemoMonitor } from "./demo-monitor";
 
 const object = z.record(z.string(), z.unknown());
 const orgInput = z.string().trim().min(1);
@@ -29,6 +30,7 @@ export async function createApp(
   options: {
     investigatorFactory?: InvestigatorFactory;
     relaySender?: typeof sendRelayMessage;
+    demoMonitor?: typeof runDemoMonitor;
   } = {},
 ) {
   await store.initialize();
@@ -552,7 +554,9 @@ export async function createApp(
         "Wait for pending investigations to finish before resetting the demo",
       );
     await store.reset();
-    res.json({ ok: true });
+    const monitor = options.demoMonitor || (await import("./demo-monitor")).runDemoMonitor;
+    const recording = await monitor(signals);
+    res.json({ ok: true, recording });
   });
   app.use(
     (

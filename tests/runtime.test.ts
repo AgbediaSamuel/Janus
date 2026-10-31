@@ -325,3 +325,66 @@ test("Relay hydrates stripped SDK metadata by exact message ID and rejects a mis
     assert.deepEqual(calls, validSender ? ["get", "persist", "read"] : ["get"]);
   }
 });
+
+test("one rejected message does not stop later messages on the same Relay subscription", async () => {
+  const message = {
+    id: "rejected",
+    messageId: "rejected",
+    text: "Message",
+    from: { id: "vendor-agent" },
+    metadata: { caseId: "case-1", eventId: "event-1" },
+  };
+  const controller = new AbortController();
+  let emit: ((value: typeof message) => void) | undefined;
+  const persisted: string[] = [];
+  const reads: string[] = [];
+  const recipient: RelayClient = {
+    id: "customer-agent",
+    handle: "customer",
+    sendMessage: async () => message,
+    onDirectMessage: (handler) => {
+      emit = handler;
+      return () => {};
+    },
+    inbox: {
+      get: async () => ({
+        unreadChannels: [],
+        mentions: [],
+        recentReactions: [],
+        unreadDms: [],
+      }),
+    },
+    messages: {
+      get: async () => message,
+      listDirect: async () => [],
+      markRead: async (id) => {
+        reads.push(id);
+        if (id === "read-failed") throw new Error("Read receipt unavailable");
+        controller.abort();
+        return { messageId: id };
+      },
+    },
+  };
+  const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
+  const transport = createRelayTransport(async (id) =>
+    id === "customer" ? recipient : partner,
+  );
+  const subscribed = transport.subscribe({
+    organizationId: "customer",
+    partnerId: "vendor",
+    signal: controller.signal,
+    onMessage: async (received) => {
+      if (received.messageId === "rejected")
+        throw new Error("Reset case no longer exists");
+      persisted.push(received.messageId);
+    },
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert(emit);
+  emit(message);
+  emit({ ...message, id: "read-failed", messageId: "read-failed" });
+  emit({ ...message, id: "next-message", messageId: "next-message" });
+  await subscribed;
+  assert.deepEqual(persisted, ["read-failed", "next-message"]);
+  assert.deepEqual(reads, ["read-failed", "next-message"]);
+});

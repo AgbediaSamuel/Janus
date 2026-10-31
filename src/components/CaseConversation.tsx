@@ -14,6 +14,7 @@ import {
 } from "./Icons";
 import ProviderLogo from "./ProviderLogo";
 import "./CaseConversation.css";
+import { messageAudience } from "./messageAudience";
 
 export interface ConversationDestination {
   target: "agent" | "case";
@@ -273,10 +274,12 @@ export default function CaseConversation({
           const source = message.channel
             ? channelLabels[message.channel.toLowerCase()] || message.channel
             : null;
-          const audience =
-            message.visibility === "private"
-              ? `Only ${organizations.find((item) => item.id === message.organizationId)?.name || organization?.name || "your organization"}`
-              : `Shared with ${counterpart?.name || "counterpart"}`;
+          const audience = messageAudience(
+            message,
+            organizations,
+            organizationId,
+            counterpartId,
+          );
           return (
             <li key={message.id}>
               {currentDate !== previousDate && (
@@ -322,10 +325,14 @@ export default function CaseConversation({
                       </span>
                     )}
                     <span>
-                      {message.visibility === "private" && (
-                        <LockKeyhole size={11} />
+                      {audience.pending ? (
+                        <Clock3 size={11} />
+                      ) : (
+                        message.visibility === "private" && (
+                          <LockKeyhole size={11} />
+                        )
                       )}{" "}
-                      {audience}
+                      {audience.label}
                     </span>
                   </div>
                   {linked.length > 0 && (

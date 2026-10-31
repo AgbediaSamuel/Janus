@@ -83,6 +83,11 @@ export interface CaseEvent {
   channel?: string;
   actorType?: "agent" | "human" | "system";
   evidenceIds?: string[];
+  delivery?: {
+    status: "accepted" | "received" | "unconfirmed";
+    messageId?: string;
+    receivedAt?: string;
+  };
   title: string;
   body: string;
   createdAt: string;

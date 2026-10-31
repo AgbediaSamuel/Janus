@@ -258,29 +258,32 @@ export function createRelayTransport(
       );
       let queue = Promise.resolve();
       let stop!: () => void;
-      let fail!: (error: unknown) => void;
-      const stopped = new Promise<void>((resolve, reject) => {
+      const stopped = new Promise<void>((resolve) => {
         stop = resolve;
-        fail = reject;
       });
       const handle = async (message: ReceivedRelayMessage) => {
         await input.onMessage(message);
         return true;
       };
       const unsubscribe = recipient.onDirectMessage((received) => {
-        queue = queue.then(async () => {
-          const message = await decodeIncoming(
-            received,
-            recipient,
-            partner,
-            input.organizationId,
-            input.partnerId,
-          );
-          if (!message) return;
-          await input.onMessage(message);
-          await recipient.messages.markRead(message.messageId);
-        });
-        void queue.catch(fail);
+        queue = queue
+          .then(async () => {
+            const message = await decodeIncoming(
+              received,
+              recipient,
+              partner,
+              input.organizationId,
+              input.partnerId,
+            );
+            if (!message) return;
+            await input.onMessage(message);
+            await recipient.messages.markRead(message.messageId);
+          })
+          .catch(() => {
+            console.warn(
+              "Relay message handling failed; the message was not confirmed read. Live listening continues for subsequent messages.",
+            );
+          });
       });
       input.signal?.addEventListener("abort", stop, { once: true });
       void replayUnread(

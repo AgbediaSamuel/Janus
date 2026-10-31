@@ -74,7 +74,7 @@ export function createInvestigationTools(
     tool((input) => callbacks.sendPartnerMessage(input), {
       name: "send_partner_message",
       description:
-        "Send a necessary diagnostic question or sanitized evidence summary to the authenticated partner agent for this case through Agent Relay.",
+        "Send a necessary diagnostic question or sanitized evidence summary to the authenticated partner agent for this case through Agent Relay. A successful send means Relay accepted it, not that the partner has received or replied. Use this tool when the partner needs the update; your private final answer is not sent to them.",
       schema: z.object({ text: z.string().min(1) }),
     }),
     tool(() => callbacks.receivePartnerMessages(), {
