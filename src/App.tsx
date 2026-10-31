@@ -541,19 +541,6 @@ export default function App({ route }: { route: WorkspaceRoute }) {
           </button>
           <button
             type="button"
-            className="icon-button sidebar-collapse-control"
-            aria-label={
-              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!sidebarCollapsed}
-            aria-controls="workspace-sidebar"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          >
-            <SidebarPanelIcon />
-          </button>
-          <button
-            type="button"
             ref={mobileCloseRef}
             className="icon-button sidebar-mobile-close"
             aria-label="Close navigation"

@@ -3348,9 +3348,6 @@ main {
 .sidebar-brand-row .brand {
   min-width: 0;
 }
-.sidebar-collapse-control {
-  flex-shrink: 0;
-}
 .sidebar-mobile-close,
 .sidebar-backdrop {
   display: none;
@@ -3402,8 +3399,7 @@ main {
   }
 }
 @media (max-width: 720px) {
-  .desktop-sidebar-toggle,
-  .sidebar-collapse-control {
+  .desktop-sidebar-toggle {
     display: none;
   }
   .sidebar-mobile-close {
