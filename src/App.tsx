@@ -56,11 +56,12 @@ import ProviderLogo from "./components/ProviderLogo";
 import InvestigationMap from "./components/InvestigationMap";
 import VendorOperations from "./components/VendorOperations";
 import CaseTimeline from "./components/CaseTimeline";
+import CaseConversation from "./components/CaseConversation";
 import IntegrationCatalog from "./components/IntegrationCatalog";
 import { workspacePath, type WorkspaceRoute } from "./workspaces";
 
 type View = "overview" | "cases" | "integrations" | "network";
-type CaseTab = "activity" | "evidence";
+type CaseTab = "conversation" | "activity" | "evidence";
 const statusLabels: Record<string, string> = {
   detected: "Detected",
   investigating: "Investigating",
@@ -172,7 +173,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(
     route.caseId,
   );
-  const [caseTab, setCaseTab] = useState<CaseTab>("activity");
+  const [caseTab, setCaseTab] = useState<CaseTab>("conversation");
   const [query, setQuery] = useState("");
   const [caseFilter, setCaseFilter] = useState("all");
   const [error, setError] = useState("");
@@ -215,6 +216,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
       generation === authenticationGeneration.current
     ) {
       setState(next);
+      setError((current) => current === "The Janus server did not respond. Refresh the workspace to check the latest case state." ? "" : current);
       initialized.current = true;
     }
   }, []);
@@ -368,7 +370,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
     updateURL("cases", id);
     setSelectedCaseId(id);
     setView("cases");
-    setCaseTab("activity");
+    setCaseTab("conversation");
     setQuery("");
   }
 
@@ -882,7 +884,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                         at {time(selected.createdAt)}
                       </span>
                       <div className="button-row">
-                        {!isFinished(selected) && (
+                        {!isFinished(selected) && (selected.step > 0 || !selected.runs?.length) && (
                           <button
                             className="button primary"
                             disabled={
@@ -912,7 +914,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                             {selected.status === "awaiting_approval"
                               ? selected.approvals.some((approval) => approval.status === "pending" && approval.organizationId === organizationId)
                                 ? "Your approval needed"
-                                : `Waiting for ${counterpartName} approval`
+                                : `${counterpartName} approval`
                               : "Continue investigation"}
                           </button>
                         )}
@@ -956,7 +958,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                   <div className="case-layout">
                     <section className="case-main">
                       <div className="case-tabs">
-                        {(["activity", "evidence"] as const).map((tab) => (
+                        {(["conversation", "activity", "evidence"] as const).map((tab) => (
                           <button
                             className={caseTab === tab ? "selected" : ""}
                             key={tab}
@@ -969,7 +971,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                             ) : (
                               <MessageSquare size={15} />
                             )}
-                            {tab === "activity" ? "Timeline" : "Evidence"}
+                            {tab === "conversation" ? "Conversation" : tab === "activity" ? "Timeline" : "Evidence"}
                             {tab === "evidence" && (
                               <span className="count-pill">
                                 {
@@ -1003,6 +1005,19 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                             <p>{selected.outcome}</p>
                           </div>
                         </div>
+                      )}
+                      {caseTab === "conversation" && (
+                        <CaseConversation
+                          key={selected.id}
+                          supportCase={selected}
+                          organizations={state.organizations}
+                          organizationId={organizationId}
+                          onEvidence={setEvidence}
+                          onSend={async (text) => {
+                            await api(`/api/cases/${selected.id}/messages`, { organizationId, text });
+                            await refresh();
+                          }}
+                        />
                       )}
                       {caseTab === "activity" && (
                         <CaseTimeline
@@ -1236,6 +1251,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                 void act("create", async () => {
                   const created = await api<SupportCase>("/api/cases", {
                     organizationId,
+                    startInvestigation: Boolean(runtime?.agentsConfigured),
                     title: caseTitle,
                     summary: caseSummary,
                     customerId: isVendor

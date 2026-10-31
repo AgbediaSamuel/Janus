@@ -156,3 +156,22 @@ test("vendors can create cases for registered customers but cannot select an unr
   const notion = (await request("/api/state?organizationId=notion")).data;
   assert(!notion.cases.some((entry: any) => entry.id === created.data.id));
 });
+
+test("human chat reports missing runtime without recording a message", async () => {
+  const created = await request("/api/cases", { title: "Private chat setup" });
+  assert.equal(created.status, 201);
+  const result = await request(`/api/cases/${created.data.id}/messages`, { organizationId: "notion", text: "Investigate this" });
+  assert.equal(result.status, 503);
+  const state = await request("/api/state?organizationId=notion");
+  const item = state.data.cases.find((entry: any) => entry.id === created.data.id);
+  assert.deepEqual(item.events, created.data.events);
+  assert.equal(item.runs, undefined);
+});
+
+
+test("automatic investigation fails before case creation when the runtime is missing", async () => {
+  const before = (await request("/api/state?organizationId=notion")).data.cases.length;
+  const created = await request("/api/cases", { title: "Must not be created", startInvestigation: true });
+  assert.equal(created.status, 503);
+  assert.equal((await request("/api/state?organizationId=notion")).data.cases.length, before);
+});

@@ -27,6 +27,14 @@ export class InvestigationService {
   ) {}
 
   async enqueue(caseId: string, organizationId: string, message: string) {
+    await this.queueTurn(caseId, organizationId, message);
+  }
+
+  async enqueueHuman(caseId: string, organizationId: string, text: string, actor: string) {
+    await this.queueTurn(caseId, organizationId, text, actor);
+  }
+
+  private async queueTurn(caseId: string, organizationId: string, message: string, humanActor?: string) {
     await this.store.updateCase(caseId, (item) => {
       if (![item.customerId, item.vendorId].includes(organizationId))
         throw new HttpError(403, "Organization is not a case participant");
@@ -35,6 +43,18 @@ export class InvestigationService {
           409,
           "Create a fresh case for agent investigation; this case already uses the guided replay",
         );
+      if (humanActor) {
+        event(item, {
+          type: "message",
+          channel: "janus",
+          actorType: "human",
+          organizationId,
+          actor: humanActor,
+          title: "Message to your agent",
+          body: message,
+          visibility: "private",
+        });
+      }
       item.runs ??= [];
       item.runs.push({
         id: randomUUID(),
@@ -382,7 +402,9 @@ export class InvestigationService {
               id: `sent:${eventId}`,
               type: "message",
               organizationId,
-              actor: "Janus",
+              actor: `${organizationId} agent`,
+              channel: "relay",
+              actorType: "agent",
               title: "Message submitted to Agent Relay",
               body: text,
               createdAt: result.createdAt || new Date().toISOString(),
@@ -481,10 +503,12 @@ export class InvestigationService {
       const result = await investigator.invoke(message, turnId);
       await this.store.updateCase(caseId, (current) => {
         event(current, {
-          type: "investigation",
+          type: "message",
+          channel: "janus",
+          actorType: "agent",
           organizationId,
-          actor: "Janus",
-          title: "Agent turn completed",
+          actor: `${organizationId} agent`,
+          title: "Agent reply",
           body: result.text,
           visibility: "private",
         });

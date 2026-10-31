@@ -399,3 +399,85 @@ test("resolution rejects a successful probe collected before the latest action c
     await fixture.cleanup();
   }
 });
+
+test("human conversation commits a private message with its pending turn and records the real worker reply", async () => {
+  const fixture = await temporaryStore();
+  const observed: string[] = [];
+  const app = await createApp(fixture.store, {
+    investigatorFactory: factory(async ({ organizationId, caseId }, message, turnId) => {
+      const persisted = (await fixture.store.getCase(caseId))!;
+      assert.equal(organizationId, "notion");
+      assert.equal(message, "Check the private upload trace");
+      assert(persisted.events.some((entry) => entry.actorType === "human" && entry.channel === "janus" && entry.body === message && entry.visibility === "private"));
+      assert(persisted.runs?.some((run) => run.id === turnId && run.message === message));
+      observed.push(message);
+    }),
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const request = async (route: string, body?: unknown) => {
+    const response = await fetch(`http://127.0.0.1:${address.port}${route}`, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return { status: response.status, data: await response.json() as any };
+  };
+  try {
+    const item = newCase();
+    await fixture.store.createCase(item);
+    for (const body of [{ organizationId: "ramp", text: "Cannot read this case" }, { organizationId: "outsider", text: "Cannot impersonate a participant" }]) {
+      assert.equal((await request(`/api/cases/${item.id}/messages`, body)).status, 403);
+    }
+    assert.equal((await request(`/api/cases/${item.id}/messages`, { organizationId: "notion", text: "   " })).status, 400);
+    assert.deepEqual(await fixture.store.getCase(item.id), item);
+    const outsiderCase = newCase({ customerId: "outsider", vendorId: "aws" });
+    await fixture.store.createCase(outsiderCase);
+    assert.equal((await request(`/api/cases/${outsiderCase.id}/messages`, { organizationId: "outsider", text: "No membership" })).status, 403);
+    assert.deepEqual(await fixture.store.getCase(outsiderCase.id), outsiderCase);
+    const guided = (await fixture.store.getCase("JAN-1042"))!;
+    assert.equal((await request(`/api/cases/${guided.id}/messages`, { organizationId: "notion", text: "Do not persist" })).status, 409);
+    await assert.rejects(app.locals.investigations.enqueueHuman(guided.id, "notion", "Do not persist", "Notion team"), /guided replay/);
+    assert.deepEqual(await fixture.store.getCase(guided.id), guided);
+    const queued = await request(`/api/cases/${item.id}/messages`, { organizationId: "notion", text: "  Check the private upload trace  " });
+    assert.equal(queued.status, 202);
+    assert.equal(queued.data.queued, true);
+    await until(async () => (await fixture.store.getCase(item.id))?.runs?.[0]?.status === "completed");
+    const completed = (await fixture.store.getCase(item.id))!;
+    const conversation = completed.events.filter((entry) => entry.channel === "janus");
+    assert.equal(conversation.length, 2);
+    assert.deepEqual(conversation.map((entry) => entry.actorType), ["human", "agent"]);
+    assert.equal(conversation[0].actor, "Notion team");
+    assert.equal(conversation[1].body, "Test investigator completed its tool calls");
+    assert(conversation.every((entry) => entry.type === "message" && entry.visibility === "private"));
+    assert.deepEqual(observed, ["Check the private upload trace"]);
+    const vendor = (await request("/api/state?organizationId=aws")).data.cases.find((entry: any) => entry.id === item.id);
+    assert(!vendor.events.some((entry: any) => entry.channel === "janus"));
+    assert.deepEqual(vendor.runs, []);
+  } finally {
+    app.locals.investigations.close();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await fixture.cleanup();
+  }
+});
+
+
+test("case creation can immediately enqueue an actual investigator for the selected vendor", async () => {
+  const fixture = await temporaryStore();
+  const observed: string[] = [];
+  const app = await createApp(fixture.store, { investigatorFactory: factory(async ({ organizationId }, message) => { observed.push(organizationId); assert.match(message, /Investigate this case/); }) });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/cases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organizationId: "aws", customerId: "ramp", vendorId: "aws", title: "Investigate attachment delay", startInvestigation: true }) });
+    assert.equal(response.status, 201);
+    const item = await response.json() as any;
+    assert.equal(item.runs[0].organizationId, "aws");
+    await until(async () => (await fixture.store.getCase(item.id))?.runs?.[0]?.status === "completed");
+    assert.deepEqual(observed, ["aws"]);
+  } finally {
+    app.locals.investigations.close();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await fixture.cleanup();
+  }
+});

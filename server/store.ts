@@ -125,6 +125,8 @@ export class Store {
   }
 
   async getCase(id: string): Promise<SupportCase | null> {
+    if (!liveMode && !this.data.cases.some((item) => item.id === id))
+      return null;
     if (!liveMode && !process.env.TERSE_ACTOR_URL)
       return structuredClone(
         this.data.cases.find((item) => item.id === id) || null,
@@ -167,6 +169,8 @@ export class Store {
     fn: (item: SupportCase) => void | Promise<void>,
   ) {
     return this.serialized(async () => {
+      if (!liveMode && !this.data.cases.some((item) => item.id === id))
+        throw new HttpError(404, "Case not found");
       const useActor = liveMode || Boolean(process.env.TERSE_ACTOR_URL);
       const current = useActor
         ? await readTerseCase(id)
@@ -288,7 +292,19 @@ export class Store {
           "Wait for pending investigations to finish before resetting the demo",
         );
       }
-      this.data = empty();
+      const casesToRestore = seededCases();
+      if (process.env.TERSE_ACTOR_URL) {
+        for (const item of casesToRestore) {
+          const current = await readTerseCase(item.id);
+          await persistTerseCase({
+            caseId: item.id,
+            eventId: crypto.randomUUID(),
+            expectedVersion: current.version,
+            snapshot: item,
+          });
+        }
+      }
+      this.data = { cases: casesToRestore, connections: seededConnections() };
       this.credentials.clear();
       await this.save();
     });

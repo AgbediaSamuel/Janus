@@ -14,14 +14,11 @@ export interface ReceivedRelayMessage extends RelayCaseMessage {
   createdAt?: string;
 }
 
-type RelayInboxItem = Awaited<
-  ReturnType<RelayAgentClient["inbox"]["list"]>
->["items"][number];
-export type RelayClient = Pick<
-  RelayAgentClient,
-  "id" | "handle" | "sendMessage"
-> & {
-  inbox: Pick<RelayAgentClient["inbox"], "list" | "subscribe" | "ack">;
+type RelayMessage = Awaited<ReturnType<RelayAgentClient["messages"]["get"]>>;
+export type RelayClient = Pick<RelayAgentClient, "id" | "handle" | "sendMessage"> & {
+  onDirectMessage: (handler: (message: RelayMessage) => void) => () => void;
+  inbox: Pick<RelayAgentClient["inbox"], "get">;
+  messages: Pick<RelayAgentClient["messages"], "listDirect" | "markRead">;
 };
 
 export function configuredRelayTokens(): Record<string, string> {
@@ -52,24 +49,22 @@ export function configuredRelayTokens(): Record<string, string> {
   return tokens;
 }
 
-let relay: AgentRelay | undefined;
-const clients = new Map<string, Promise<RelayAgentClient>>();
+const clients = new Map<string, Promise<RelayClient>>();
 
-async function getClient(organizationId: string): Promise<RelayAgentClient> {
+async function getClient(organizationId: string): Promise<RelayClient> {
   const workspaceKey = process.env.RELAY_WORKSPACE_KEY?.trim();
   const apiToken = configuredRelayTokens()[organizationId];
   if (!workspaceKey || !apiToken)
     throw new Error(
       `Agent Relay is not configured for organization ${organizationId}`,
     );
-  if (!relay)
-    relay = new AgentRelay({
-      workspaceKey,
-      baseUrl: process.env.RELAY_BASE_URL || undefined,
-    });
   let client = clients.get(organizationId);
   if (!client) {
-    client = relay.workspace.reconnect({ apiToken });
+    const scopedRelay = new AgentRelay({ workspaceKey, agentToken: apiToken, baseUrl: process.env.RELAY_BASE_URL || undefined });
+    client = scopedRelay.workspace.reconnect({ apiToken }).then((agent) => ({
+      ...agent,
+      onDirectMessage: (handler: (message: RelayMessage) => void) => scopedRelay.addListener("dm.received", (event) => handler(event.message)),
+    }));
     clients.set(organizationId, client);
   }
   try {
@@ -98,15 +93,14 @@ export function createRelayTransport(
   }
 
   function decode(
-    item: RelayInboxItem,
+    message: RelayMessage,
     recipient: RelayClient,
     partner: RelayClient,
     organizationId: string,
     partnerId: string,
   ): ReceivedRelayMessage | null {
-    if (item.message.from.id !== partner.id) return null;
-    if (item.recipient.id && item.recipient.id !== recipient.id) return null;
-    const metadata = item.message.metadata;
+    if (message.from.id !== partner.id) return null;
+    const metadata = message.metadata;
     if (
       !metadata ||
       typeof metadata.caseId !== "string" ||
@@ -118,11 +112,29 @@ export function createRelayTransport(
       eventId: metadata.eventId,
       from: partnerId,
       to: organizationId,
-      text: item.message.text,
-      messageId: item.message.messageId,
-      deliveryId: item.id,
-      createdAt: item.message.createdAt,
+      text: message.text,
+      messageId: message.messageId,
+      deliveryId: message.messageId,
+      createdAt: message.createdAt,
     };
+  }
+
+  async function replayUnread(
+    recipient: RelayClient,
+    partner: RelayClient,
+    organizationId: string,
+    partnerId: string,
+    onMessage: (message: ReceivedRelayMessage) => Promise<boolean>,
+  ) {
+    const inbox = await recipient.inbox.get();
+    for (const conversation of inbox.unreadDms) {
+      const messages = await recipient.messages.listDirect({ conversationId: conversation.conversationId, limit: conversation.unreadCount });
+      for (const raw of [...messages].reverse()) {
+        const message = decode(raw, recipient, partner, organizationId, partnerId);
+        if (!message || !(await onMessage(message))) continue;
+        await recipient.messages.markRead(message.messageId);
+      }
+    }
   }
 
   return {
@@ -153,25 +165,14 @@ export function createRelayTransport(
       caseId: string;
       onMessage: (message: ReceivedRelayMessage) => Promise<void>;
     }) {
-      const { recipient, partner } = await identities(
-        input.organizationId,
-        input.partnerId,
-      );
-      const inbox = await recipient.inbox.list();
+      const { recipient, partner } = await identities(input.organizationId, input.partnerId);
       const received: ReceivedRelayMessage[] = [];
-      for (const item of inbox.items) {
-        const message = decode(
-          item,
-          recipient,
-          partner,
-          input.organizationId,
-          input.partnerId,
-        );
-        if (!message || message.caseId !== input.caseId) continue;
+      await replayUnread(recipient, partner, input.organizationId, input.partnerId, async (message) => {
+        if (message.caseId !== input.caseId) return false;
         await input.onMessage(message);
-        await recipient.inbox.ack({ inboxItemId: item.id, state: "read" });
         received.push(message);
-      }
+        return true;
+      });
       return received;
     },
     async subscribe(input: {
@@ -180,24 +181,29 @@ export function createRelayTransport(
       signal?: AbortSignal;
       onMessage: (message: ReceivedRelayMessage) => Promise<void>;
     }) {
-      const { recipient, partner } = await identities(
-        input.organizationId,
-        input.partnerId,
-      );
-      for await (const item of recipient.inbox.subscribe({
-        signal: input.signal,
-      })) {
-        const message = decode(
-          item,
-          recipient,
-          partner,
-          input.organizationId,
-          input.partnerId,
-        );
-        if (!message) continue;
-        await input.onMessage(message);
-        await recipient.inbox.ack({ inboxItemId: item.id, state: "read" });
-      }
+      if (input.signal?.aborted) return;
+      const { recipient, partner } = await identities(input.organizationId, input.partnerId);
+      let queue = Promise.resolve();
+      let stop!: () => void;
+      let fail!: (error: unknown) => void;
+      const stopped = new Promise<void>((resolve, reject) => { stop = resolve; fail = reject; });
+      const handle = async (message: ReceivedRelayMessage) => { await input.onMessage(message); return true; };
+      const unsubscribe = recipient.onDirectMessage((received) => {
+        const message = decode(received, recipient, partner, input.organizationId, input.partnerId);
+        if (!message) return;
+        queue = queue.then(async () => {
+          await input.onMessage(message);
+          await recipient.messages.markRead(message.messageId);
+        });
+        void queue.catch(fail);
+      });
+      input.signal?.addEventListener("abort", stop, { once: true });
+      void replayUnread(recipient, partner, input.organizationId, input.partnerId, handle).catch(() => {
+        console.warn("Relay unread-message replay failed; live direct-message listening remains active. Restart to retry unread history.");
+      });
+      if (input.signal?.aborted) stop();
+      try { await stopped; await queue; }
+      finally { unsubscribe(); input.signal?.removeEventListener("abort", stop); }
     },
   };
 }

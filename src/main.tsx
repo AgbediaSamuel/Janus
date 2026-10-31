@@ -4,6 +4,7 @@ import { resolveWorkspaceRoute, workspacePath } from "./workspaces";
 import "./typography.css";
 
 const Landing = lazy(() => import("./Landing"));
+const Admin = lazy(() => import("./Admin"));
 const App = lazy(() => Promise.all([import("./App"), import("./App.css")]).then(([module]) => module));
 
 function Router() {
@@ -18,7 +19,7 @@ function Router() {
   }, []);
   const route = resolveWorkspaceRoute(pathname);
   return <Suspense fallback={<div role="status" style={{ padding: 32, fontFamily: "var(--font-text)", fontSize: 32 }}>Janus</div>}>
-    {pathname === "/" ? <Landing /> : route ? <App key={route.workspace.organizationId} route={route} /> :
+    {pathname === "/" ? <Landing /> : pathname === "/admin" ? <Admin /> : route ? <App key={route.workspace.organizationId} route={route} /> :
       <main style={{ padding: "12vh 8vw", fontFamily: "var(--font-text)" }}><h1>Workspace not found</h1><p>Check the workspace link you were given.</p><a href="/">Back to Janus</a></main>}
   </Suspense>;
 }

@@ -79,25 +79,20 @@ test("Relay validates authenticated sender and acknowledges only after successfu
     id: "customer-agent",
     handle: "customer",
     sendMessage: async () => message,
+    onDirectMessage: () => () => {},
     inbox: {
-      list: async () => ({
-        items: [
+      get: async () => ({ unreadChannels: [], mentions: [], recentReactions: [], unreadDms: [{ conversationId: "conversation-1", from: "vendor", unreadCount: 2 }] }),
+    },
+    messages: {
+      listDirect: async () => ([
           {
-            ...delivery,
-            id: "attacker",
-            message: { ...message, from: { id: "attacker-agent" } },
+            ...message, id: "attacker", from: { id: "attacker-agent" },
           },
-          delivery,
-        ],
-      }),
-      subscribe: async function* () {},
-      ack: async () => {
+          message,
+        ]),
+      markRead: async () => {
         calls.push("ack");
-        return {
-          supported: true,
-          deliveryId: delivery.id,
-          state: "read",
-        } as Awaited<ReturnType<RelayClient["inbox"]["ack"]>>;
+        return { messageId: message.messageId };
       },
     },
   };
@@ -133,4 +128,48 @@ test("Relay validates authenticated sender and acknowledges only after successfu
     /Persistence unavailable/,
   );
   assert.deepEqual(calls, []);
+});
+
+
+test("Relay direct-message listener persists actual events before marking them read", async () => {
+  const calls: string[] = [];
+  const message = { id: "dm-1", messageId: "dm-1", text: "Partner diagnostic", from: { id: "vendor-agent" }, metadata: { caseId: "case-1", eventId: "event-1" } };
+  const controller = new AbortController();
+  let emit: ((value: typeof message) => void) | undefined;
+  const recipient: RelayClient = {
+    id: "customer-agent", handle: "customer", sendMessage: async () => message,
+    onDirectMessage: (handler) => { emit = handler; calls.push("listen"); return () => { calls.push("unsubscribe"); }; },
+    inbox: { get: async () => { calls.push("replay"); return { unreadChannels: [], mentions: [], recentReactions: [], unreadDms: [] }; } },
+    messages: { listDirect: async () => [], markRead: async () => { calls.push("read"); controller.abort(); return { messageId: message.messageId }; } },
+  };
+  const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
+  const transport = createRelayTransport(async (id) => id === "customer" ? recipient : partner);
+  const subscribed = transport.subscribe({ organizationId: "customer", partnerId: "vendor", signal: controller.signal, onMessage: async (received) => { assert.equal(received.messageId, "dm-1"); calls.push("persist"); } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert(emit);
+  emit(message);
+  await subscribed;
+  assert.deepEqual(calls, ["listen", "replay", "persist", "read", "unsubscribe"]);
+});
+
+
+test("a slow unread-history request cannot delay a live Relay message", async () => {
+  const message = { id: "live-dm", messageId: "live-dm", text: "Live result", from: { id: "vendor-agent" }, metadata: { caseId: "case-1", eventId: "event-live" } };
+  const controller = new AbortController();
+  let emit: ((value: typeof message) => void) | undefined;
+  let persisted = false;
+  const recipient: RelayClient = {
+    id: "customer-agent", handle: "customer", sendMessage: async () => message,
+    onDirectMessage: (handler) => { emit = handler; return () => {}; },
+    inbox: { get: () => new Promise(() => {}) },
+    messages: { listDirect: async () => [], markRead: async () => { assert(persisted); controller.abort(); return { messageId: message.messageId }; } },
+  };
+  const partner = { ...recipient, id: "vendor-agent", handle: "vendor" };
+  const transport = createRelayTransport(async (id) => id === "customer" ? recipient : partner);
+  const subscribed = transport.subscribe({ organizationId: "customer", partnerId: "vendor", signal: controller.signal, onMessage: async () => { persisted = true; } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert(emit);
+  emit(message);
+  await subscribed;
+  assert(persisted);
 });
