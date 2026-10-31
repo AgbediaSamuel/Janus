@@ -7,6 +7,8 @@ export function event(
   input: Omit<CaseEvent, "id" | "createdAt">,
 ) {
   item.events.push({
+    actorType: input.type === "message" ? "agent" : "system",
+    ...(input.type === "message" ? { channel: "relay" } : {}),
     ...input,
     id: randomUUID(),
     createdAt: new Date().toISOString(),
@@ -28,12 +30,13 @@ export function addEvidence(
     organizationId: input.organizationId,
     actor:
       input.organizationId === item.customerId
-        ? "Notion agent"
+        ? `${item.customerId === "ramp" ? "Ramp" : "Notion"} agent`
         : item.vendorId === "google"
           ? "Google Cloud Support"
           : "AWS Support",
     title: input.title,
     body: input.summary,
+    evidenceIds: [evidence.id],
     visibility: input.visibility,
   });
   return evidence;
@@ -50,10 +53,11 @@ export function newCase(
 ): SupportCase {
   const now = new Date().toISOString();
   const indexing = input.vendorId === "google";
+  const ramp = input.customerId === "ramp";
   const item: SupportCase = {
     id: `JAN-${randomUUID().slice(0, 8).toUpperCase()}`,
     title:
-      input.title ||
+      input.title || (ramp ? indexing ? "Accounting exports are falling behind the reporting window" : "Receipt and invoice attachments are slow to appear" : undefined) ||
       (indexing
         ? "Search results lag behind recent page edits"
         : "S3 uploads are timing out in us-west-2"),
@@ -61,7 +65,7 @@ export function newCase(
       input.summary ??
       (input.live
         ? ""
-        : indexing
+        : ramp ? indexing ? "Accounting exports have queued 624 ledger updates and are 24 minutes behind. Card authorization and bill payment processing remain available." : "Receipt and invoice attachment processing is delayed. Upload requests are timing out before documents become available for expense review and bill approval." : indexing
           ? "Recent page updates are missing from Notion search. The indexing queue has 1,842 outstanding messages; page editing and reads remain available."
           : "Notion attachment uploads are intermittently returning S3 503 SlowDown responses. Upload latency reached 4.8 seconds at p95, concentrated in us-west-2."),
     status: "detected",
@@ -78,9 +82,7 @@ export function newCase(
     ...(!input.live
       ? {
           demoService: {
-            scenario: indexing
-              ? ("google-indexing" as const)
-              : ("aws-uploads" as const),
+            scenario: ramp ? indexing ? "ramp-exports" as const : "ramp-attachments" as const : indexing ? "google-indexing" as const : "aws-uploads" as const,
             route: "canary" as const,
             probes: [],
           },
@@ -90,9 +92,9 @@ export function newCase(
   event(item, {
     type: "signal",
     organizationId: item.customerId,
-    actor: input.live ? "Operator" : "Notion monitoring",
+    actor: input.live ? "Operator" : ramp ? "Ramp monitoring" : "Notion monitoring",
     title: indexing
-      ? "Search freshness threshold exceeded"
+      ? ramp ? "Accounting export freshness threshold exceeded" : "Search freshness threshold exceeded"
       : "Upload error rate increased",
     body: item.summary,
     visibility: "shared",
@@ -104,23 +106,16 @@ export function projectCase(
   item: SupportCase,
   organizationId: string,
 ): SupportCase {
+  if (![item.customerId, item.vendorId].includes(organizationId)) throw new HttpError(403, "Case access denied");
   const { demoService: _demoService, ...visible } = item;
+  const evidence = item.evidence.filter((entry) => entry.visibility === "shared" || entry.organizationId === organizationId);
+  const evidenceIds = new Set(evidence.map((entry) => entry.id));
   return {
     ...visible,
     runs: item.runs?.filter((run) => run.organizationId === organizationId),
-    events: item.events.filter(
-      (entry) =>
-        entry.visibility === "shared" ||
-        entry.organizationId === organizationId,
-    ),
-    evidence: item.evidence.filter(
-      (entry) =>
-        entry.visibility === "shared" ||
-        entry.organizationId === organizationId,
-    ),
-    approvals: item.approvals.filter(
-      (entry) => entry.organizationId === organizationId,
-    ),
+    events: item.events.filter((entry) => entry.visibility === "shared" || entry.organizationId === organizationId).map((entry) => ({ ...entry, ...(entry.evidenceIds ? { evidenceIds: entry.evidenceIds.filter((id) => evidenceIds.has(id)) } : {}) })),
+    evidence,
+    approvals: item.approvals.filter((entry) => entry.organizationId === organizationId),
   };
 }
 
@@ -134,6 +129,7 @@ export function advanceDemo(item: SupportCase) {
     );
   if (["resolved", "escalated"].includes(item.status))
     throw new HttpError(409, "This case is complete");
+  if (item.customerId === "ramp") return advanceRampCase(item);
   const indexing = item.demoService?.scenario === "google-indexing";
   const vendor = indexing ? "Google Cloud Support" : "AWS Support";
   const next = item.step + 1;
@@ -311,6 +307,44 @@ export function advanceDemo(item: SupportCase) {
         body: item.outcome,
         visibility: "shared",
       });
+      break;
+    }
+  }
+}
+
+function advanceRampCase(item: SupportCase) {
+  const exports = item.vendorId === "google";
+  const vendor = exports ? "Google Cloud Support" : "AWS Support";
+  const next = item.step + 1;
+  if (next === 5 && item.demoService?.route !== "stable") throw new HttpError(409, "The approved recovery action must complete before verification");
+  item.step = next;
+  switch (next) {
+    case 1:
+      item.status = "investigating";
+      addEvidence(item, { organizationId: "ramp", source: exports ? "Ramp accounting export workers" : "Ramp document processing", title: exports ? "Reporting lag isolated to the export consumer" : "Attachment delays isolated to document storage requests", summary: exports ? "624 ledger updates are waiting for export. The worker is retrying a payload-version mismatch; authorization and payment processing are unaffected." : "Invoice and receipt uploads are returning 503 responses before document extraction begins. Existing bills and card transactions remain available.", data: exports ? { queuedUpdates: 624, oldestUpdateSeconds: 1440, workerPayloadVersion: 2, eventPayloadVersion: 3, paymentProcessingAffected: false } : { requestIds: ["ATT-8D10", "ATT-8D11"], privateDocumentIds: ["invoice-7281", "receipt-4820"], errorRate: 0.084, latencyP95Ms: 6200, region: "us-east-1" }, visibility: "private", simulated: true });
+      break;
+    case 2:
+      event(item, { type: "message", organizationId: "ramp", actor: `Ramp agent → ${vendor}`, title: exports ? "Export delivery correlation requested" : "Attachment request trace shared", body: exports ? "The accounting export consumer is 24 minutes behind with 624 updates queued. Please check delivery and acknowledgement health. No account names, amounts, or ledger records are included; payments remain available." : "Attachment requests ATT-8D10 and ATT-8D11 are timing out in us-east-1. We have removed invoice content and customer identifiers. Can you correlate these request IDs with storage-path health?", visibility: "shared" });
+      event(item, { type: "message", organizationId: item.vendorId, actor: `${vendor} → Ramp agent`, title: "Trace investigation started", body: exports ? "We will inspect the delivery trace and retry pattern using the correlation identifiers. Please leave the queue intact until we confirm an ordered replay plan." : "We have the two request IDs and are checking the selected storage route. Please preserve the current retry queue; there is no need to resend document contents.", visibility: "shared" });
+      break;
+    case 3:
+      addEvidence(item, { organizationId: item.vendorId, source: exports ? "Google Cloud delivery trace" : "AWS storage request trace", title: exports ? "Consumer compatibility causes repeated delivery" : "Storage route selection correlates with attachment timeouts", summary: exports ? "Delivery is healthy. The export worker rejects the new payload version before acknowledging messages. A compatible worker can replay the queued updates in order." : "The reported request IDs use a recently changed regional route. The previous route is healthy and can be restored for the affected document traffic.", data: exports ? { deliveryAvailable: true, consumerError: "payload_version_mismatch", compatibleWorker: "accounting-export-v3" } : { region: "us-east-1", routingChange: "storage-route-219", previousRoute: "stable", currentRoute: "canary", tenant: "ramp" }, visibility: "private", simulated: true });
+      event(item, { type: "message", organizationId: item.vendorId, actor: `${vendor} → Ramp agent`, title: exports ? "Ordered export replay recommended" : "Storage route restoration proposed", body: exports ? "The delivery service is healthy; the accounting export worker is rejecting payload version 3. Restore the compatible worker, replay the queued updates in order, and compare the export watermark with the source. This needs approval from your accounting operations team." : "The attachment request failures correlate with a storage route change. We recommend restoring the previous route for this traffic, then verifying with a fresh upload that contains no financial or customer data.", visibility: "shared" });
+      break;
+    case 4: {
+      item.status = "awaiting_approval";
+      const owner = exports ? "ramp" : "aws";
+      item.approvals.push({ id: randomUUID(), organizationId: owner, title: exports ? "Replay queued accounting exports" : "Restore the attachment storage route", description: exports ? "Restore the compatible export worker and replay 624 queued updates in order. Do not reinitiate payments or alter ledger entries." : "Restore the previous storage route for the affected document traffic and verify a fresh attachment upload.", status: "pending", requestedAt: new Date().toISOString(), action: { connectorId: exports ? "demo-customer" : "demo-vendor", operation: exports ? "replay_exports" : "rollback", input: {} } });
+      event(item, { type: "approval", organizationId: owner, actor: exports ? "Ramp agent" : vendor, title: exports ? "Ramp approval required" : "AWS approval required", body: exports ? "The ordered export replay is ready for an accounting operations owner to review." : "The scoped attachment-route change is ready for the AWS operator to review.", visibility: "shared" });
+      break;
+    }
+    case 5: {
+      const probe = { requestId: randomUUID(), status: 200, at: new Date().toISOString() };
+      item.demoService!.probes.push(probe);
+      item.status = "resolved";
+      item.outcome = exports ? "Accounting exports have caught up with the source watermark. The ordered replay completed without repeating a payment or changing ledger entries." : "A fresh receipt attachment uploaded successfully and became available for review after the approved storage-route restoration.";
+      addEvidence(item, { organizationId: "ramp", source: exports ? "Ramp export watermark checks" : "Ramp attachment availability checks", title: exports ? "Export freshness verified" : "Receipt attachment available for review", summary: item.outcome, data: { ...probe, ...(exports ? { queuedUpdates: 0, watermarkMatched: true } : { attachmentAvailable: true }) }, visibility: "shared", simulated: true });
+      event(item, { type: "verification", organizationId: "ramp", actor: "Ramp agent", title: "Customer verification passed", body: item.outcome, visibility: "shared" });
       break;
     }
   }

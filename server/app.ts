@@ -17,6 +17,7 @@ import {
   type InvestigatorFactory,
 } from "./investigations";
 import { executeDemo } from "./demo-service";
+import { executeFixtureConnection } from "./fixture-connections";
 import { SignalService, signalInput } from "./signals";
 
 const object = z.record(z.string(), z.unknown());
@@ -112,6 +113,7 @@ export async function createApp(
     input: Record<string, unknown>,
   ) {
     const connection = await connectionFor(organizationId, connectorId);
+    if (connection.mode === "simulation") return executeFixtureConnection(store, connection, operationId, input);
     const credentials = await store.getCredentials(connection);
     return executeConnector({ connectorId, operationId, input, credentials });
   }
@@ -239,6 +241,7 @@ export async function createApp(
         title: z.string().trim().min(1).optional(),
         summary: z.string().optional(),
         customerId: orgInput.optional(),
+        organizationId: orgInput.optional(),
         vendorId: orgInput.optional(),
       })
       .strict()
@@ -249,14 +252,19 @@ export async function createApp(
         "Live cases require a title, customerId, and vendorId",
       );
     const item = newCase({ ...input, live: liveMode });
-    requireOrganization(res, item.customerId);
+    const organizationId = input.organizationId || item.customerId;
+    requireOrganization(res, organizationId);
+    if (![item.customerId, item.vendorId].includes(organizationId))
+      throw new HttpError(403, "Case access denied");
     if (item.customerId === item.vendorId)
       throw new HttpError(400, "Choose two different organizations");
     const organizations = await store.organizations();
-    if (!organizations.some((org) => org.id === item.vendorId))
+    if (!organizations.some((org) => org.id === item.customerId && org.role === "Customer"))
+      throw new HttpError(400, "Customer organization not found");
+    if (!organizations.some((org) => org.id === item.vendorId && org.role === "Vendor"))
       throw new HttpError(400, "Vendor organization not found");
     await store.createCase(item);
-    res.status(201).json(projectCase(item, item.customerId));
+    res.status(201).json(projectCase(item, organizationId));
   });
 
   app.post("/api/cases/:id/advance", async (req, res) => {

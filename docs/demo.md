@@ -4,7 +4,31 @@ The demo should show a repaired service and the evidence behind it. The interfac
 
 ## Two ways to run
 
-**Seeded cases** need no accounts. The default Notion workspace contains JAN-1042, an AWS S3 upload incident at the investigation stage, and JAN-1041, a Google Cloud search-indexing incident awaiting Notion approval. Continue JAN-1042 to the AWS-owned route-restoration approval, approve from AWS, then continue to verify an upload. For JAN-1041, approve the Notion-owned indexing replay and continue to verify search freshness. Both are persisted local fixtures: ordinary case copy is shown in the console while `mode: simulation` and `simulated: true` remain in the backend. Neither flow contacts a provider or claims a verified connection. Reopening or restarting preserves approved and resolved cases. Existing user cases are retained; older workspace records remain on disk.
+Open a workspace directly at your Vite origin (normally `http://127.0.0.1:5173`):
+
+- Notion: `/client/54d7c452-36a7-4f94-b37d-8b166e827001`
+- Ramp: `/client/54d7c452-36a7-4f94-b37d-8b166e827002`
+- AWS: `/vendor/54d7c452-36a7-4f94-b37d-8b166e827003`
+- Google Cloud: `/vendor/54d7c452-36a7-4f94-b37d-8b166e827004`
+
+For example, Notion's Google Cloud case opens at `/client/54d7c452-36a7-4f94-b37d-8b166e827001/cases/JAN-1041`; the vendor's view is `/vendor/54d7c452-36a7-4f94-b37d-8b166e827004/cases/JAN-1041`. Both views read the same persisted case with different private projections. These routes are defined in `src/workspaces.ts`; they do not grant live organization membership.
+
+**Seeded cases** need no accounts. Four organization workspaces share four persisted cases:
+
+| Customer | Vendor | Case | Starting point and recovery |
+| --- | --- | --- | --- |
+| Notion | AWS | JAN-1042 | Upload failures under investigation; AWS approves route restoration, then the customer verifies a fresh upload. |
+| Notion | Google Cloud | JAN-1041 | Search indexing awaits Notion approval for a compatible consumer and replay. |
+| Ramp | AWS | JAN-1044 | Receipt and invoice attachments are delayed; AWS approves a storage-route restoration before verification. |
+| Ramp | Google Cloud | JAN-1043 | Accounting exports await Ramp approval for an ordered replay, then a source-watermark comparison. |
+
+These are illustrative local scenarios, not reports about the named companies or their cloud architecture. Ramp's workflow vocabulary comes from its [product overview](https://ramp.com/products) and [Bill Pay overview](https://support.ramp.com/bill-pay-overview/), which describe expenses, invoices, accounting, and payments. Employee names and correspondence are fictional. Recovery never creates a payment, approves an invoice, or modifies a real ledger.
+
+The timeline contains separate private human messages from Slack, Gmail, Teams, and Outlook alongside sanitized agent replies shared over the case thread. Customers see only their own cases; each vendor sees cases from both customers. Private messages, evidence, approvals, and linked evidence IDs are projected for the selected participant. Shared approval-request events tell the partner which owner must act without exposing that owner's action inputs.
+
+Each workspace starts with connected sample integrations. They read organization-scoped local case records, preserve `mode: simulation`, and return `fixture: true`; they never obtain credentials or contact provider APIs. Sample writes are rejected. Entering real credentials replaces that connection with live mode, and local credentials must be re-entered after a restart. Sample connection status survives restart. Read inputs select message IDs where supplied; these local readers are case-record snapshots, not complete replicas of each provider's query language.
+
+Ordinary case copy appears in the console while `mode: simulation` and `simulated: true` remain in the backend. Startup adds missing fixed seed IDs and missing correspondence once, preserving statuses, approvals, outcomes, existing user cases, and operator progress. Older workspace records remain on disk.
 
 **Agent investigation** runs Deep Agents against an executable local service. Start a fresh case; do not advance the guided replay. The customer can inspect traces, deployments, and upload or search-freshness probes. The vendor can inspect rollout history and propose a routing rollback. The customer cannot call vendor tools.
 

@@ -14,9 +14,20 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the public landing page at the Vite URL, normally `http://127.0.0.1:5173`, then choose **Open Janus** to enter `/app`. The local workspace needs no login. The API listens on `127.0.0.1:4318`.
+Open the public landing page at the Vite URL, normally `http://127.0.0.1:5173`, then choose **Open Janus** to enter the Notion workspace. `/app` remains a shortcut to that workspace. The local workspace needs no login. The API listens on `127.0.0.1:4318`.
 
-Without credentials, the app opens a Notion workspace with two persisted cases: AWS S3 upload failures under investigation and a Google Cloud indexing incident awaiting Notion approval. Continue the AWS investigation, review its scoped recovery from the AWS workspace, and verify uploads. Approve the indexing replay from Notion, then continue to verify search freshness. These are local service fixtures, not live incidents involving the named companies. The backend retains `mode: simulation` and `simulated: true`; no provider credentials or verified connections are fabricated. Startup adds missing seed IDs once and preserves all existing cases and progress. State persists in `.janus/`; connector credentials entered in local mode remain in memory and must be entered again after restart.
+The four workspace entry points are defined in `src/workspaces.ts`:
+
+| Organization | Workspace path |
+| --- | --- |
+| Notion | `/client/54d7c452-36a7-4f94-b37d-8b166e827001` |
+| Ramp | `/client/54d7c452-36a7-4f94-b37d-8b166e827002` |
+| AWS | `/vendor/54d7c452-36a7-4f94-b37d-8b166e827003` |
+| Google Cloud | `/vendor/54d7c452-36a7-4f94-b37d-8b166e827004` |
+
+Append `/cases`, `/integrations`, or `/network` for those views, or `/cases/<encoded-case-id>` for case details. Workspace URLs select the view; live Supabase membership still controls access.
+
+Without credentials, Janus provides separate Notion, Ramp, AWS, and Google Cloud workspaces with four persisted cases: Notion attachment uploads and search indexing, plus Ramp receipt attachments and accounting exports. Customers see their own two cases; vendors see the cases involving them across both customers. The timeline includes private human correspondence and shared agent replies, with recovery approvals owned by the responsible organization. These are illustrative local incidents and fictional employees, not claims about the named companies' infrastructure. Connected sample integrations read scoped local records without provider calls or credentials. Backend `mode: simulation`, evidence `simulated: true`, and read-result `fixture: true` distinguish them from live access. Startup adds missing seeds and messages once while preserving progress. State persists in `.janus/`; real connector credentials entered locally remain in memory and must be entered again after restart. See [the demo guide](docs/demo.md) for the four recovery paths.
 
 To use actual Terse persistence locally, run `pnpm dev:actors` in a second terminal and set `TERSE_ACTOR_URL=http://127.0.0.1:7100/v1/projects/janus/actors` before starting the API. Start a new case after switching storage modes. Terse becomes authoritative; `.janus/` keeps the local case index. The actor server needs no cloud account.
 

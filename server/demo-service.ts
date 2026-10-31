@@ -9,12 +9,13 @@ export function demoDefinitions(
   organizationId: string,
 ): ConnectorDefinition[] {
   if (item.mode !== "simulation") return [];
-  const indexing = item.demoService?.scenario === "google-indexing";
+  const indexing = item.vendorId === "google";
+  const ramp = item.customerId === "ramp";
   if (organizationId === item.customerId)
     return [
       {
         id: "demo-customer",
-        name: indexing ? "Notion indexing service" : "Notion upload service",
+        name: ramp ? indexing ? "Ramp accounting export service" : "Ramp document attachments" : indexing ? "Notion indexing service" : "Notion upload service",
         category: "Observability",
         description:
           "Case-scoped local service for diagnosis and verification.",
@@ -23,7 +24,7 @@ export function demoDefinitions(
         operations: [
           {
             id: "traces",
-            name: indexing ? "Read indexing traces" : "Read upload traces",
+            name: indexing ? ramp ? "Read export traces" : "Read indexing traces" : "Read upload traces",
             write: false,
             description: "Read request failures observed by the customer.",
             exampleInput: {},
@@ -38,7 +39,7 @@ export function demoDefinitions(
           {
             id: "probe",
             name: indexing
-              ? "Check search freshness"
+              ? ramp ? "Check export freshness" : "Check search freshness"
               : "Test attachment upload",
             write: false,
             description:
@@ -48,8 +49,8 @@ export function demoDefinitions(
           ...(indexing
             ? [
                 {
-                  id: "reindex",
-                  name: "Replay indexing backlog",
+                  id: ramp ? "replay_exports" : "reindex",
+                  name: ramp ? "Replay accounting exports" : "Replay indexing backlog",
                   write: true,
                   description:
                     "Restore the compatible consumer and replay pending updates. Requires customer approval.",
@@ -118,11 +119,12 @@ export async function executeDemo(
     ?.operations.some((value) => value.id === operation);
   if (!allowed)
     throw new HttpError(403, "This tool belongs to the other organization");
-  const indexing = item.demoService.scenario === "google-indexing";
+  const indexing = item.vendorId === "google";
+  const ramp = item.customerId === "ramp";
   if (operation === "deployments")
     return {
       latest: {
-        id: indexing ? "notion-indexer-73" : "notion-upload-42",
+        id: ramp ? indexing ? "ramp-export-73" : "ramp-documents-42" : indexing ? "notion-indexer-73" : "notion-upload-42",
         deployedAt: new Date(
           Date.parse(item.createdAt) - (indexing ? 300_000 : 86_400_000),
         ).toISOString(),
@@ -136,14 +138,14 @@ export async function executeDemo(
       failures: item.demoService.probes.filter((probe) => probe.status !== 200),
       initialSignal: indexing
         ? {
-            subscription: "notion-page-indexing",
-            backlog: 1842,
+            subscription: ramp ? "ramp-accounting-exports" : "notion-page-indexing",
+            backlog: ramp ? 624 : 1842,
             error: "unsupported_event_schema",
           }
         : {
             requestId: "S3-7FC91A",
             status: 503,
-            region: "us-west-2",
+            region: ramp ? "us-east-1" : "us-west-2",
             latencyP95Ms: 4800,
           },
       fixture: true,
@@ -155,7 +157,7 @@ export async function executeDemo(
           deliveryAvailable: true,
           consumerSchema: item.demoService.route === "stable" ? 3 : 2,
           eventSchema: 3,
-          backlog: item.demoService.route === "stable" ? 0 : 1842,
+          backlog: item.demoService.route === "stable" ? 0 : ramp ? 624 : 1842,
           fixture: true,
         }
       : {
@@ -166,7 +168,7 @@ export async function executeDemo(
           backends: { stable: "healthy", canary: "unhealthy" },
           fixture: true,
         };
-  if (operation === "rollback" || operation === "reindex") {
+  if (operation === "rollback" || operation === "reindex" || operation === "replay_exports") {
     await store.updateCase(caseId, (current) => {
       current.demoService!.route = "stable";
     });
@@ -192,7 +194,7 @@ export async function executeDemo(
     body:
       probe.status === 200
         ? indexing
-          ? { indexed: true, backlog: 0 }
+          ? ramp ? { watermarkMatched: true, queuedUpdates: 0 } : { indexed: true, backlog: 0 }
           : { upload: "accepted" }
         : indexing
           ? { error: "indexing_delayed", backlog: 1842 }

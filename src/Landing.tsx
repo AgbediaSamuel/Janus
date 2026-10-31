@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { ArrowRight, ArrowUpRight } from "./components/Icons";
 import ProviderLogo from "./components/ProviderLogo";
+import { workspacePath } from "./workspaces";
 import "./Landing.css";
 
 const providers = [
   ["slack", "Slack"],
+  ["teams", "Microsoft Teams"],
+  ["outlook", "Microsoft Outlook"],
+  ["gmail", "Gmail"],
   ["linear", "Linear"],
   ["github", "GitHub"],
   ["datadog", "Datadog"],
@@ -70,6 +74,14 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
 
 export default function Landing() {
   const [stage, setStage] = useState(0);
+  const [showAllProviders, setShowAllProviders] = useState(false);
+  const groups = [
+    { title: "Where your team talks", ids: ["slack", "teams", "outlook", "gmail"] },
+    { title: "Where work gets done", ids: ["linear", "github", "zendesk", "work-iq"] },
+    { title: "Where issues leave a trace", ids: ["sentry", "datadog", "aws-cloudwatch", "gcp-logging"] },
+  ];
+  const featured = new Set(groups.flatMap((group) => group.ids));
+  const moreProviders = providers.filter(([id]) => !featured.has(id));
   const current = stages[stage];
 
   return (
@@ -84,7 +96,7 @@ export default function Landing() {
         <nav aria-label="Main navigation">
           <a href="#how-it-works">How it works</a>
           <a href="#integrations">Integrations</a>
-          <a className="lp-button lp-button-small" href="/app">
+          <a className="lp-button lp-button-small" href={workspacePath("notion")}>
             Open Janus <Arrow />
           </a>
         </nav>
@@ -105,7 +117,7 @@ export default function Landing() {
                 brings them together to investigate issues, exchange evidence,
                 and work toward a resolution.
               </p>
-              <a className="lp-text-link" href="/app">
+              <a className="lp-text-link" href={workspacePath("notion")}>
                 Open Janus <Arrow diagonal />
               </a>
             </div>
@@ -336,7 +348,7 @@ export default function Landing() {
                 systems deserve a clear proposal. Review the action, its scope,
                 and the findings behind it before approving.
               </p>
-              <a className="lp-text-link" href="/app">
+              <a className="lp-text-link" href={workspacePath("notion")}>
                 See the workspace <Arrow diagonal />
               </a>
             </div>
@@ -402,16 +414,12 @@ export default function Landing() {
               workspace.
             </p>
           </div>
-          <ul className="lp-provider-wall">
-            {providers.map(([id, name]) => (
-              <li key={id}>
-                <span>
-                  <ProviderLogo connectorId={id} size={32} />
-                </span>
-                <span>{name}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="lp-integration-groups">
+            {groups.map((group) => <section key={group.title}><h3>{group.title}</h3><ul className="lp-integration-rail">{group.ids.map((id) => <li key={id}><ProviderLogo connectorId={id} size={32}/><span>{providers.find(([provider]) => provider === id)?.[1]}</span></li>)}</ul></section>)}
+          </div>
+          <div className="lp-more-integrations"><div className="lp-more-marks">{moreProviders.slice(0,10).map(([id,name]) => <span key={id} title={name}><ProviderLogo connectorId={id} size={24}/><span className="sr-only">{name}</span></span>)}</div><button onClick={() => setShowAllProviders(!showAllProviders)} aria-expanded={showAllProviders}>{showAllProviders ? "Show less" : `+ ${moreProviders.length - 10} more integrations`} <Arrow/></button></div>
+          {showAllProviders && <ul className="lp-more-list">{moreProviders.map(([id,name]) => <li key={id}><ProviderLogo connectorId={id} size={20}/>{name}</li>)}</ul>}
+          <a className="lp-text-link" href={workspacePath("notion", "integrations")}>Explore all {providers.length} integrations <Arrow/></a>
           <p className="lp-integration-note">
             Available connectors. Account credentials and permissions are
             required; supported operations vary by provider.
@@ -425,7 +433,7 @@ export default function Landing() {
               <br />
               on the case.
             </h2>
-            <a className="lp-button lp-button-large" href="/app">
+            <a className="lp-button lp-button-large" href={workspacePath("notion")}>
               Open Janus <Arrow diagonal />
             </a>
           </div>

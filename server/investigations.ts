@@ -5,6 +5,7 @@ import { HttpError } from "./config";
 import { connectorDefinitions, executeConnector } from "./connectors";
 import { createInvestigator } from "./agents";
 import { demoDefinitions, executeDemo } from "./demo-service";
+import { executeFixtureConnection } from "./fixture-connections";
 import {
   configuredRelayTokens,
   receiveRelayMessages,
@@ -185,6 +186,8 @@ export class InvestigationService {
       item.events.push({
         id: messageKey,
         type: "message",
+        channel: "relay",
+        actorType: "agent",
         organizationId: message.from,
         actor: `${message.from} → ${message.to}`,
         title: "Partner message received",
@@ -271,6 +274,8 @@ export class InvestigationService {
           const isDemo = demos.some(
             (definition) => definition.id === connectorId,
           );
+          const connection = isDemo ? undefined : await connectionFor(connectorId);
+          const simulated = isDemo || connection?.mode === "simulation";
           const observedAt = new Date().toISOString();
           const result = isDemo
             ? await executeDemo(
@@ -281,12 +286,12 @@ export class InvestigationService {
                 operation,
                 input,
               )
-            : await executeConnector({
+            : connection?.mode === "simulation" ? await executeFixtureConnection(this.store, connection, operation, input) : await executeConnector({
                 connectorId,
                 operationId: operation,
                 input,
                 credentials: await this.store.getCredentials(
-                  await connectionFor(connectorId),
+                  connection!,
                 ),
               });
           let receiptId = "";
@@ -299,7 +304,7 @@ export class InvestigationService {
                 "Recorded tool result. Inspect the data before drawing a conclusion.",
               data: { result },
               visibility: "private",
-              simulated: isDemo,
+              simulated,
               provenance: { connectorId, operation, receiptId: randomUUID() },
             });
             evidence.collectedAt = observedAt;
@@ -319,8 +324,10 @@ export class InvestigationService {
         },
         requestAction: async (action) => {
           operationFor(action.connectorId, action.operation);
-          if (!demos.some((definition) => definition.id === action.connectorId))
-            await connectionFor(action.connectorId);
+          if (!demos.some((definition) => definition.id === action.connectorId)) {
+            const connection = await connectionFor(action.connectorId);
+            if (connection.mode === "simulation") throw new HttpError(400, "Local workspace integrations are read-only. Configure provider credentials for external actions.");
+          }
           const requested = {
             connectorId: action.connectorId,
             operation: action.operation,

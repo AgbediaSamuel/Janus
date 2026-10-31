@@ -19,8 +19,6 @@ interface InvestigationMapProps {
   supportCase?: SupportCase;
   organizations: Organization[];
   organizationId: string;
-  accessibleOrganizationIds?: string[];
-  onOrganizationChange: (id: string) => void;
   onOpen?: () => void;
   compact?: boolean;
 }
@@ -102,8 +100,6 @@ export default function InvestigationMap({
   supportCase,
   organizations,
   organizationId,
-  accessibleOrganizationIds,
-  onOrganizationChange,
   onOpen,
   compact = false,
 }: InvestigationMapProps) {
@@ -147,9 +143,6 @@ export default function InvestigationMap({
         </div>
       );
     const owned = organization.id === organizationId;
-    const canAccess =
-      !accessibleOrganizationIds ||
-      accessibleOrganizationIds.includes(organization.id);
     const localEvidence =
       supportCase?.evidence.filter(
         (item) =>
@@ -179,7 +172,7 @@ export default function InvestigationMap({
         </div>
         <div className="map-company">
           <span className="map-company-icon">
-            {["notion", "aws", "google"].includes(organization.id) ? (
+            {["notion", "ramp", "aws", "google"].includes(organization.id) ? (
               <ProviderLogo connectorId={organization.id} size={28} />
             ) : (
               organization.name.slice(0, 1).toUpperCase()
@@ -224,10 +217,6 @@ export default function InvestigationMap({
               <span />
               Viewing
             </span>
-          ) : canAccess ? (
-            <button onClick={() => onOrganizationChange(organization.id)}>
-              View side <ArrowRight size={12} />
-            </button>
           ) : (
             <span className="map-external">Counterpart</span>
           )}

@@ -1139,3 +1139,16 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+.lp-integration-groups { display: grid; gap: 32px; }
+.landing .lp-integration-groups h3 { font-size: 24px; letter-spacing: -.02em; margin-bottom: 16px; }
+.lp-integration-rail { display: flex; overflow-x: auto; gap: 14px; margin: 0; padding: 0 0 10px; list-style: none; scroll-snap-type: x proximity; }
+.lp-integration-rail > li { flex: 1 0 160px; padding: 24px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--lp-line); border-radius: 6px; background: #fff; font-size: 14px; scroll-snap-align: start; }
+.lp-more-integrations { display: flex; align-items: center; gap: 24px; justify-content: space-between; margin-top: 30px; border-top: 1px solid var(--lp-line); padding-top: 24px; }
+.lp-more-marks { display: flex; gap: 20px; flex-wrap: wrap; }
+.lp-more-marks > span { width: 32px; height: 32px; display: grid; place-items: center; }
+.lp-more-integrations > button { display: flex; align-items: center; gap: 10px; border: none; background: transparent; color: var(--lp-ink); font-size: 14px; cursor: pointer; white-space: nowrap; padding: 10px 0; }
+.lp-more-list { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); list-style: none; padding: 24px 0 0; gap: 20px; }
+.lp-more-list > li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.landing .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+@media (max-width: 700px) { .lp-integration-rail > li { flex: 0 0 190px; padding: 20px; } .lp-more-integrations { flex-direction: column; align-items: start; gap: 12px; } .lp-more-marks { gap: 14px; } .lp-more-list { grid-template-columns: repeat(2,minmax(0,1fr)); } }

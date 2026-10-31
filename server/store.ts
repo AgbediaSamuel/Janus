@@ -5,7 +5,7 @@ import { liveMode, supabaseAdmin, HttpError } from "./config";
 import { decryptCredentials, encryptCredentials } from "./secrets";
 import { persistTerseCase, readTerseCase } from "./runtime/terse";
 
-import { localOrganizations, seededCases } from "./fixtures";
+import { localOrganizations, seededCases, seededConnections, enrichSeedCase } from "./fixtures";
 
 interface Data {
   cases: SupportCase[];
@@ -26,7 +26,7 @@ export class Store {
     if (liveMode) return;
     try {
       this.data = JSON.parse(await readFile(this.file, "utf8"));
-      this.data.connections = this.data.connections.map((connection) => ({
+      this.data.connections = this.data.connections.map((connection) => connection.mode === "simulation" ? connection : ({
         ...connection,
         status: "not_configured",
         message:
@@ -59,6 +59,17 @@ export class Store {
         }
       }
       if (!existing) await this.createCase(item);
+    }
+    for (const seeded of seededCases()) {
+      const current = await this.getCase(seeded.id);
+      if (current && enrichSeedCase(current)) {
+        await this.updateCase(seeded.id, (item) => { enrichSeedCase(item); });
+      }
+    }
+    const missingConnections = seededConnections().filter((connection) => !this.data.connections.some((existing) => existing.id === connection.id));
+    if (missingConnections.length) {
+      this.data.connections.push(...missingConnections);
+      await this.save();
     }
   }
 
@@ -239,6 +250,7 @@ export class Store {
   async getCredentials(
     connection: Connection,
   ): Promise<Record<string, string>> {
+    if (connection.mode === "simulation") throw new HttpError(400, "This connection uses local workspace records. Configure provider credentials for live access.");
     if (!liveMode) {
       const credentials = this.credentials.get(connection.id);
       if (!credentials)

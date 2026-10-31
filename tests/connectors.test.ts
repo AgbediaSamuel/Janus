@@ -13,6 +13,156 @@ afterEach(() => {
   mock.restoreAll();
 });
 
+test("Teams reads and replies stay bound to the configured team and channel", async () => {
+  const credentials = { token: "teams-oauth", teamId: "team-a", channelId: "19:channel@thread.tacv2" };
+  mockResponse({ value: [] }, (url, init) => {
+    assert.equal(url.origin, "https://graph.microsoft.com");
+    assert.equal(url.pathname, "/v1.0/teams/team-a/channels/19%3Achannel%40thread.tacv2/messages/message-1/replies");
+    assert.equal(url.searchParams.get("$top"), "25");
+    assert.equal(new Headers(init.headers).get("authorization"), "Bearer teams-oauth");
+  });
+  await executeConnector({ connectorId: "teams", operationId: "replies", input: { messageId: "message-1" }, credentials });
+  mockResponse({ id: "reply-1" }, (url, init) => {
+    assert.equal(url.pathname.endsWith("/messages/message-1/replies"), true);
+    assert.equal(init.method, "POST");
+    assert.deepEqual(JSON.parse(String(init.body)), { body: { contentType: "text", content: "Evidence received" } });
+  });
+  await executeConnector({ connectorId: "teams", operationId: "reply", input: { messageId: "message-1", text: "Evidence received" }, credentials });
+});
+
+test("Teams pagination accepts only its exact scoped collection and rejects channel overrides", async () => {
+  const credentials = { token: "teams-oauth", teamId: "team-a", channelId: "channel-a" };
+  let calls = 0;
+  mockResponse({ value: [] }, (url) => { calls++; assert.equal(url.searchParams.get("$skiptoken"), "cursor"); });
+  await executeConnector({ connectorId: "teams", operationId: "messages", input: { nextPage: "https://graph.microsoft.com/v1.0/teams/team-a/channels/channel-a/messages?$skiptoken=cursor" }, credentials });
+  for (const nextPage of ["https://attacker.example/messages", "https://graph.microsoft.com/v1.0/teams/team-a/channels/other/messages", "https://graph.microsoft.com/v1.0/users/another/messages"]) {
+    await assert.rejects(executeConnector({ connectorId: "teams", operationId: "messages", input: { nextPage }, credentials }), /configured collection/);
+  }
+  await assert.rejects(executeConnector({ connectorId: "teams", operationId: "messages", input: { channelId: "other" }, credentials }), /Invalid input/);
+  assert.equal(calls, 1);
+});
+
+test("Outlook search and conversations use only the configured mailbox", async () => {
+  const credentials = { token: "graph-oauth", mailbox: "support@example.com" };
+  mockResponse({ value: [] }, (url, init) => {
+    assert.equal(url.pathname, "/v1.0/users/support%40example.com/messages");
+    assert.equal(url.searchParams.get("$search"), '"subject:incident"');
+    assert.equal(new Headers(init.headers).get("Prefer"), 'outlook.body-content-type="text"');
+    assert.equal(new Headers(init.headers).get("Authorization"), "Bearer graph-oauth");
+  });
+  await executeConnector({ connectorId: "outlook", operationId: "messages", input: { query: "subject:incident" }, credentials });
+  mockResponse({ value: [] }, (url) => {
+    assert.equal(url.searchParams.get("$filter"), "conversationId eq 'thread''quoted'");
+  });
+  await executeConnector({ connectorId: "outlook", operationId: "conversation", input: { conversationId: "thread'quoted" }, credentials });
+});
+
+test("Outlook send and reply report acceptance without claiming delivery", async () => {
+  const credentials = { token: "graph-oauth", mailbox: "me" };
+  mockResponse("", (url, init) => {
+    assert.equal(url.pathname, "/v1.0/me/sendMail");
+    assert.equal(init.method, "POST");
+    assert.deepEqual(JSON.parse(String(init.body)), { message: { subject: "Incident", body: { contentType: "Text", content: "Evidence" }, toRecipients: [{ emailAddress: { address: "support@example.com" } }] }, saveToSentItems: true });
+  }, 202);
+  assert.deepEqual(await executeConnector({ connectorId: "outlook", operationId: "send", input: { to: ["support@example.com"], subject: "Incident", text: "Evidence" }, credentials }), { accepted: true, delivered: false });
+  mockResponse("", (url, init) => {
+    assert.equal(url.pathname, "/v1.0/me/messages/message-1/reply");
+    assert.deepEqual(JSON.parse(String(init.body)), { message: { body: { contentType: "Text", content: "Update" } } });
+  }, 202);
+  assert.deepEqual(await executeConnector({ connectorId: "outlook", operationId: "reply", input: { messageId: "message-1", text: "Update" }, credentials }), { accepted: true, delivered: false });
+});
+
+test("Outlook pagination cannot escape the configured mailbox", async () => {
+  globalThis.fetch = async () => { throw new Error("Unexpected network request"); };
+  await assert.rejects(executeConnector({ connectorId: "outlook", operationId: "messages", input: { nextPage: "https://graph.microsoft.com/v1.0/users/other/messages?$skip=10" }, credentials: { token: "oauth", mailbox: "me" } }), /configured collection/);
+});
+
+test("Gmail search uses users/me and provider page tokens; thread read requests full content", async () => {
+  const credentials = { token: "gmail-oauth" };
+  mockResponse({ threads: [] }, (url, init) => {
+    assert.equal(url.origin, "https://gmail.googleapis.com");
+    assert.equal(url.pathname, "/gmail/v1/users/me/threads");
+    assert.equal(url.searchParams.get("q"), "subject:incident");
+    assert.equal(url.searchParams.get("pageToken"), "next-page");
+    assert.equal(new Headers(init.headers).get("authorization"), "Bearer gmail-oauth");
+  });
+  await executeConnector({ connectorId: "gmail", operationId: "threads", input: { query: "subject:incident", pageToken: "next-page" }, credentials });
+  mockResponse({ messages: [] }, (url) => {
+    assert.equal(url.pathname, "/gmail/v1/users/me/threads/thread-1");
+    assert.equal(url.searchParams.get("format"), "full");
+  });
+  await executeConnector({ connectorId: "gmail", operationId: "thread", input: { threadId: "thread-1" }, credentials });
+});
+
+test("Gmail send builds base64url MIME with the authenticated sender and encoded body", async () => {
+  const requests: string[] = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input)); requests.push(url.pathname);
+    assert.equal(new Headers(init.headers).get("authorization"), "Bearer gmail-oauth");
+    if (url.pathname.endsWith("/profile")) return Response.json({ emailAddress: "customer@example.com" });
+    assert.equal(url.pathname, "/gmail/v1/users/me/messages/send");
+    const body = JSON.parse(String(init.body));
+    assert.match(body.raw, /^[A-Za-z0-9_-]+$/);
+    const mime = Buffer.from(body.raw, "base64url").toString();
+    assert.match(mime, /From: customer@example.com\r\nTo: support@example.com/);
+    assert.match(mime, /Subject: =\?UTF-8\?B\?/);
+    assert.equal(Buffer.from(mime.split("\r\n\r\n")[1], "base64").toString(), "Hello ✓");
+    assert.equal(body.threadId, undefined);
+    return Response.json({ id: "sent-1" });
+  };
+  await executeConnector({ connectorId: "gmail", operationId: "send", input: { to: ["support@example.com"], subject: "Incident ✓", text: "Hello ✓" }, credentials: { token: "gmail-oauth" } });
+  assert.equal(requests.length, 2);
+});
+
+test("Gmail replies retain thread, parent Message-ID, references, and Reply-To recipient", async () => {
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/messages/parent-1")) {
+      assert.equal(url.searchParams.get("format"), "metadata");
+      return Response.json({ threadId: "thread-1", payload: { headers: [
+        { name: "From", value: "Vendor <sender@example.com>" },
+        { name: "Reply-To", value: "Support <support@example.com>" },
+        { name: "Subject", value: "Incident" },
+        { name: "Message-ID", value: "<parent@example.com>" },
+        { name: "References", value: "<first@example.com>" },
+      ] } });
+    }
+    if (url.pathname.endsWith("/profile")) return Response.json({ emailAddress: "customer@example.com" });
+    assert.equal(url.pathname, "/gmail/v1/users/me/messages/send");
+    const body = JSON.parse(String(init.body));
+    assert.equal(body.threadId, "thread-1");
+    const mime = Buffer.from(body.raw, "base64url").toString();
+    assert.match(mime, /To: support@example.com\r\n/);
+    assert.match(mime, /In-Reply-To: <parent@example.com>\r\nReferences: <first@example.com> <parent@example.com>/);
+    return Response.json({ id: "reply-1", threadId: "thread-1" });
+  };
+  await executeConnector({ connectorId: "gmail", operationId: "reply", input: { messageId: "parent-1", text: "Evidence received" }, credentials: { token: "gmail-oauth" } });
+});
+
+test("Email rejects header injection before sending and never accepts a mailbox override", async () => {
+  let sends = 0;
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/send")) sends++;
+    return Response.json({ threadId: "thread-1", payload: { headers: [{ name: "From", value: "user@example.com\r\nBcc: attacker@example.com" }] } });
+  };
+  const credentials = { token: "gmail-oauth" };
+  await assert.rejects(executeConnector({ connectorId: "gmail", operationId: "send", input: { to: ["user@example.com"], subject: "Hello\r\nBcc: attacker@example.com", text: "Test" }, credentials }), /single line/);
+  await assert.rejects(executeConnector({ connectorId: "gmail", operationId: "reply", input: { messageId: "parent", text: "Test" }, credentials }), /unsupported mail header/);
+  await assert.rejects(executeConnector({ connectorId: "gmail", operationId: "messages", input: { userId: "other@example.com" }, credentials }), /Invalid input/);
+  assert.equal(sends, 0);
+});
+
+test("Messaging mutation metadata requires approval and provider errors hide token/content", async () => {
+  for (const id of ["teams", "outlook", "gmail"]) {
+    const definition = connectorDefinitions.find((item) => item.id === id)!;
+    assert.equal(definition.authFields.find((field) => field.key === "token")?.secret, true);
+    for (const operation of definition.operations)
+      assert.equal(operation.write, ["send", "post", "reply"].includes(operation.id));
+  }
+  mockResponse({ error: "secret-token private email content" }, () => {}, 403);
+  await assert.rejects(executeConnector({ connectorId: "gmail", operationId: "messages", input: {}, credentials: { token: "secret-token" } }), { message: "Provider returned HTTP 403" });
+});
+
 function mockResponse(
   body: unknown,
   inspect: (url: URL, init: RequestInit) => void = () => {},

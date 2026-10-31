@@ -66,7 +66,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
       };
       if (organizationId === "notion") {
         assert.deepEqual(
-          visible.integrations.map((item) => item.id),
+          visible.integrations.map((item) => item.id).filter((id) => id.startsWith("demo-")),
           ["demo-customer"],
         );
         assert.deepEqual(visible.case.approvals, []);
@@ -125,7 +125,7 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
         }
       } else {
         assert.deepEqual(
-          visible.integrations.map((item) => item.id),
+          visible.integrations.map((item) => item.id).filter((id) => id.startsWith("demo-")),
           ["demo-vendor"],
         );
         if (message.includes("approved action completed")) return;

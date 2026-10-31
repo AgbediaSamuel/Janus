@@ -146,6 +146,183 @@ add(
   },
 );
 
+function graphPage(collection: URL, nextPage?: string): URL {
+  if (!nextPage) return collection;
+  const next = endpoint(nextPage);
+  if (next.origin !== collection.origin || next.pathname !== collection.pathname)
+    throw new ConnectorError("Pagination must remain in the configured collection");
+  return next;
+}
+
+const mailAddress = z.string().email();
+const mailContent = z.object({
+  to: z.array(mailAddress).min(1),
+  subject: text.regex(/^[^\r\n]+$/, "Subject must be a single line"),
+  text,
+}).strict();
+
+add(
+  "teams", "Microsoft Teams", "Collaboration",
+  "Read a configured Teams channel and its replies; send approved messages with delegated access.",
+  fields("token", "teamId", "channelId"), ["token", "teamId", "channelId"],
+  [
+    op("messages", "List channel messages", { limit: 25 }),
+    op("message", "Read channel message", { messageId: "message-id" }),
+    op("replies", "Read message replies", { messageId: "message-id", limit: 25 }),
+    op("post", "Post channel message", { text: "Investigation update" }, true),
+    op("reply", "Reply to channel message", { messageId: "message-id", text: "Investigation update" }, true),
+  ],
+  "https://learn.microsoft.com/graph/api/channel-list-messages?view=graph-rest-1.0",
+  async (operation, input, credentials) => {
+    const collection = new URL(`https://graph.microsoft.com/v1.0/teams/${segment(required(credentials, "teamId"))}/channels/${segment(required(credentials, "channelId"))}/messages`);
+    const headers = bearer(credentials);
+    if (operation === "post" || operation === "reply") {
+      const data = operation === "reply"
+        ? parse(z.object({ messageId: text, text }).strict(), input)
+        : parse(z.object({ text }).strict(), input);
+      const url = "messageId" in data && typeof data.messageId === "string" ? path(collection, `${segment(data.messageId)}/replies`) : collection;
+      return request(url, json({ body: { contentType: "text", content: data.text } }, headers));
+    }
+    if (operation === "message") {
+      const data = parse(z.object({ messageId: text }).strict(), input);
+      return request(path(collection, segment(data.messageId)), { headers });
+    }
+    const pagination = { limit: z.number().int().min(1).max(50).default(25), nextPage: text.optional() };
+    const data = operation === "replies"
+      ? parse(z.object({ messageId: text, ...pagination }).strict(), input)
+      : parse(z.object(pagination).strict(), input);
+    const url = "messageId" in data && typeof data.messageId === "string" ? path(collection, `${segment(data.messageId)}/replies`) : collection;
+    url.searchParams.set("$top", String(data.limit));
+    return request(graphPage(url, data.nextPage), { headers });
+  },
+);
+
+add(
+  "outlook", "Microsoft Outlook", "Collaboration",
+  "Search a configured mailbox, read conversations, and send or reply after approval.",
+  fields("token", "mailbox"), ["token", "mailbox"],
+  [
+    op("messages", "Search mailbox messages", { query: "subject:incident", limit: 25 }),
+    op("message", "Read message", { messageId: "message-id" }),
+    op("conversation", "Read conversation", { conversationId: "conversation-id", limit: 25 }),
+    op("send", "Send email", { to: ["support@example.com"], subject: "Incident evidence", text: "Investigation update" }, true),
+    op("reply", "Reply to sender", { messageId: "message-id", text: "Investigation update" }, true),
+  ],
+  "https://learn.microsoft.com/graph/api/user-list-messages?view=graph-rest-1.0",
+  async (operation, input, credentials) => {
+    const mailbox = required(credentials, "mailbox");
+    const root = new URL(`https://graph.microsoft.com/v1.0/${mailbox === "me" ? "me" : `users/${segment(mailbox)}`}`);
+    const collection = path(root, "messages");
+    const headers = { ...bearer(credentials), Prefer: 'outlook.body-content-type="text"' };
+    if (operation === "send") {
+      const data = parse(mailContent, input);
+      await request(path(root, "sendMail"), json({ message: {
+        subject: data.subject, body: { contentType: "Text", content: data.text },
+        toRecipients: data.to.map((address) => ({ emailAddress: { address } })),
+      }, saveToSentItems: true }, headers));
+      return { accepted: true, delivered: false };
+    }
+    if (operation === "reply") {
+      const data = parse(z.object({ messageId: text, text }).strict(), input);
+      await request(path(collection, `${segment(data.messageId)}/reply`), json({ message: { body: { contentType: "Text", content: data.text } } }, headers));
+      return { accepted: true, delivered: false };
+    }
+    if (operation === "message") {
+      const data = parse(z.object({ messageId: text }).strict(), input);
+      return request(path(collection, segment(data.messageId)), { headers });
+    }
+    const pagination = { limit: pageSize, nextPage: text.optional() };
+    const data = operation === "conversation"
+      ? parse(z.object({ conversationId: text, ...pagination }).strict(), input)
+      : parse(z.object({ query: text.optional(), ...pagination }).strict(), input);
+    collection.searchParams.set("$top", String(data.limit));
+    collection.searchParams.set("$select", "id,subject,from,toRecipients,receivedDateTime,sentDateTime,conversationId,body,bodyPreview,internetMessageId");
+    if ("conversationId" in data) collection.searchParams.set("$filter", `conversationId eq '${data.conversationId.replace(/'/g, "''")}'`);
+    if ("query" in data && data.query) collection.searchParams.set("$search", JSON.stringify(data.query));
+    return request(graphPage(collection, data.nextPage), { headers });
+  },
+);
+
+function safeMailHeader(value: unknown): string {
+  if (typeof value !== "string" || /[\r\n]/.test(value))
+    throw new ConnectorError("Provider returned an unsupported mail header");
+  return value;
+}
+
+function singleMailRecipient(value: unknown): string {
+  const header = safeMailHeader(value).trim();
+  const named = header.match(/^[^<>]*<([^<>]+)>$/);
+  const address = mailAddress.safeParse(named ? named[1] : header);
+  if (!address.success) throw new ConnectorError("Reply requires one valid sender or Reply-To address");
+  return address.data;
+}
+
+add(
+  "gmail", "Gmail", "Collaboration",
+  "Search the authenticated Gmail mailbox, read complete threads, and send approved email replies.",
+  fields("token"), ["token"],
+  [
+    op("messages", "Search messages", { query: "subject:incident", limit: 25 }),
+    op("threads", "Search threads", { query: "subject:incident", limit: 25 }),
+    op("message", "Read message", { messageId: "message-id" }),
+    op("thread", "Read thread and replies", { threadId: "thread-id" }),
+    op("send", "Send email", { to: ["support@example.com"], subject: "Incident evidence", text: "Investigation update" }, true),
+    op("reply", "Reply in thread", { messageId: "message-id", text: "Investigation update" }, true),
+  ],
+  "https://developers.google.com/workspace/gmail/api/reference/rest",
+  async (operation, input, credentials) => {
+    const root = new URL("https://gmail.googleapis.com/gmail/v1/users/me");
+    const headers = bearer(credentials);
+    if (operation === "messages" || operation === "threads") {
+      const data = parse(z.object({ query: text.optional(), limit: pageSize, pageToken: text.optional() }).strict(), input);
+      const url = path(root, operation);
+      url.searchParams.set("maxResults", String(data.limit));
+      if (data.query) url.searchParams.set("q", data.query);
+      if (data.pageToken) url.searchParams.set("pageToken", data.pageToken);
+      return request(url, { headers });
+    }
+    if (operation === "message" || operation === "thread") {
+      const data = operation === "message"
+        ? parse(z.object({ messageId: text }).strict(), input)
+        : parse(z.object({ threadId: text }).strict(), input);
+      const url = "messageId" in data ? path(root, `messages/${segment(data.messageId)}`) : path(root, `threads/${segment(data.threadId)}`);
+      url.searchParams.set("format", "full");
+      return request(url, { headers });
+    }
+    const data = operation === "send" ? parse(mailContent, input) : parse(z.object({ messageId: text, text }).strict(), input);
+    let to: string[];
+    let subject: string;
+    let threadId: string | undefined;
+    const threadHeaders: string[] = [];
+    if ("messageId" in data) {
+      const parentUrl = path(root, `messages/${segment(data.messageId)}`);
+      parentUrl.searchParams.set("format", "metadata");
+      const parent = await request(parentUrl, { headers });
+      const header = (name: string) => parent.payload?.headers?.find((item: { name?: string; value?: string }) => item.name?.toLowerCase() === name)?.value;
+      to = [singleMailRecipient(header("reply-to") || header("from"))];
+      subject = safeMailHeader(header("subject") ?? "");
+      const messageId = safeMailHeader(header("message-id"));
+      if (!/^<[^<>\s]+>$/.test(messageId)) throw new ConnectorError("Reply requires a valid parent Message-ID header");
+      const references = safeMailHeader(header("references") ?? "").trim();
+      if (references && !/^(?:<[^<>\s]+>\s*)+$/.test(references)) throw new ConnectorError("Provider returned unsupported References header");
+      threadId = parse(text, parent.threadId);
+      threadHeaders.push(`In-Reply-To: ${messageId}`, `References: ${references ? `${references} ` : ""}${messageId}`);
+    } else {
+      to = data.to;
+      subject = data.subject;
+    }
+    const profile = await request(path(root, "profile"), { headers });
+    const from = singleMailRecipient(profile.emailAddress);
+    const raw = [
+      `From: ${from}`, `To: ${to.join(", ")}`,
+      `Subject: =?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`,
+      ...threadHeaders, "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64", "", Buffer.from(data.text).toString("base64").match(/.{1,76}/g)!.join("\r\n"),
+    ].join("\r\n");
+    return request(path(root, "messages/send"), json({ raw: Buffer.from(raw).toString("base64url"), ...(threadId ? { threadId } : {}) }, headers));
+  },
+);
+
 add(
   "linear",
   "Linear",

@@ -54,9 +54,13 @@ import type {
 import { auth, authorizationHeaders } from "./auth";
 import ProviderLogo from "./components/ProviderLogo";
 import InvestigationMap from "./components/InvestigationMap";
+import VendorOperations from "./components/VendorOperations";
+import CaseTimeline from "./components/CaseTimeline";
+import IntegrationCatalog from "./components/IntegrationCatalog";
+import { workspacePath, type WorkspaceRoute } from "./workspaces";
 
 type View = "overview" | "cases" | "integrations" | "network";
-type CaseTab = "activity" | "evidence" | "conversation";
+type CaseTab = "activity" | "evidence";
 const statusLabels: Record<string, string> = {
   detected: "Detected",
   investigating: "Investigating",
@@ -134,23 +138,43 @@ function ConnectorIcon({
 }
 
 function OrganizationLogo({ id, name }: { id: string; name: string }) {
-  return ["notion", "aws", "google"].includes(id) ? (
+  return ["notion", "ramp", "aws", "google"].includes(id) ? (
     <ProviderLogo connectorId={id} size={24} />
   ) : (
     <span>{name.slice(0, 1).toUpperCase()}</span>
   );
 }
 
-export default function App() {
+function SidebarPanelIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M5.8 8h.4m-.4 4h.4m-.4 4h.4" />
+    </svg>
+  );
+}
+
+export default function App({ route }: { route: WorkspaceRoute }) {
   const [workspaceState, setState] = useState<PlatformState | null>(null);
-  const [organizationId, setOrganizationId] =
-    useState<OrganizationID>("notion");
-  const [view, setView] = useState<View>("overview");
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const organizationId = route.workspace.organizationId;
+  const isVendor = route.workspace.kind === "vendor";
+  const [view, setView] = useState<View>(route.view);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(
+    route.caseId,
+  );
   const [caseTab, setCaseTab] = useState<CaseTab>("activity");
   const [query, setQuery] = useState("");
   const [caseFilter, setCaseFilter] = useState("all");
-  const [category, setCategory] = useState("All integrations");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -158,11 +182,19 @@ export default function App() {
   const [newCase, setNewCase] = useState(false);
   const [caseTitle, setCaseTitle] = useState("");
   const [caseSummary, setCaseSummary] = useState("");
-  const [eventFilter, setEventFilter] = useState("all");
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const mobileCloseRef = useRef<HTMLButtonElement>(null);
+  const previousMobileNav = useRef(false);
+  useEffect(() => {
+    if (mobileNav) mobileCloseRef.current?.focus();
+    else if (previousMobileNav.current) mobileMenuRef.current?.focus();
+    previousMobileNav.current = mobileNav;
+  }, [mobileNav]);
   const [authRequired, setAuthRequired] = useState(false);
-  const [caseVendor, setCaseVendor] = useState("aws");
+  const [caseVendor, setCaseVendor] = useState(isVendor ? "notion" : "aws");
   const initialized = useRef(false);
   const authenticationGeneration = useRef(0);
   const state =
@@ -176,20 +208,13 @@ export default function App() {
     const active = organizationRef.current;
     const generation = authenticationGeneration.current;
     const next = await api<PlatformState>(
-      initialized.current
-        ? `/api/state?organizationId=${encodeURIComponent(active)}`
-        : "/api/state",
+      `/api/state?organizationId=${encodeURIComponent(active)}`,
     );
     if (
       active === organizationRef.current &&
       generation === authenticationGeneration.current
     ) {
       setState(next);
-      if (
-        !initialized.current ||
-        !next.organizations.some((item) => item.id === active)
-      )
-        setOrganizationId(next.activeOrganizationId);
       initialized.current = true;
     }
   }, []);
@@ -314,35 +339,39 @@ export default function App() {
     }
   }
 
-  function selectOrganization(id: OrganizationID) {
-    organizationRef.current = id;
-    setOrganizationId(id);
+  useEffect(() => {
+    setView(route.view);
+    setSelectedCaseId(route.caseId);
     setEvidence(null);
     setConnector(null);
     setNewCase(false);
-    setCaseVendor("");
     setQuery("");
-    setError("");
-    setNotice("");
+  }, [route.view, route.caseId]);
+
+  function updateURL(next: View, caseId?: string) {
+    window.history.pushState(
+      null,
+      "",
+      workspacePath(organizationId, next, caseId),
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
   function navigate(next: View) {
+    updateURL(next);
     setView(next);
     setSelectedCaseId(null);
     setQuery("");
     setMobileNav(false);
   }
   function openCase(id: string) {
+    updateURL("cases", id);
     setSelectedCaseId(id);
     setView("cases");
     setCaseTab("activity");
-    setEventFilter("all");
     setQuery("");
   }
 
-  const accessibleIDs = workspaceState?.accessibleOrganizationIds;
-  const canAccessOrganization = (id: string) =>
-    !accessibleIDs || accessibleIDs.includes(id);
   const org = workspaceState?.organizations.find(
     (item) => item.id === organizationId,
   );
@@ -351,13 +380,24 @@ export default function App() {
   const connections = (state?.connections || []).filter(
     (item) => item.organizationId === organizationId,
   );
-  const liveConnections = connections.filter(
-    (item) => item.mode === "live" && item.status === "connected",
-  );
+  const connected = connections.filter((item) => item.status === "connected");
+  const counterpartId =
+    selected && (isVendor ? selected.customerId : selected.vendorId);
+  const counterpartName =
+    state?.organizations.find((item) => item.id === counterpartId)?.name ||
+    "the other company";
+  const partners =
+    state?.organizations.filter(
+      (item) => item.role.toLowerCase() === (isVendor ? "customer" : "vendor"),
+    ) || [];
   const openCases = cases.filter((item) => !isFinished(item));
   const approvals = cases.flatMap((item) =>
     item.approvals
-      .filter((approval) => approval.status === "pending")
+      .filter(
+        (approval) =>
+          approval.status === "pending" &&
+          approval.organizationId === organizationId,
+      )
       .map((approval) => ({ ...approval, caseId: item.id })),
   );
   const visibleCases = cases.filter(
@@ -379,10 +419,10 @@ export default function App() {
       })
     | undefined;
   const viewLabel = {
-    overview: "Overview",
-    cases: "Cases",
+    overview: isVendor ? "Support overview" : "Overview",
+    cases: isVendor ? "Customer cases" : "Cases",
     integrations: "Integrations",
-    network: "Organization network",
+    network: isVendor ? "Customers" : "Vendors",
   }[view];
 
   function renderApprovalCard({
@@ -455,7 +495,7 @@ export default function App() {
                   (item) => item.id === approval.organizationId,
                 )?.name
               }
-              . Switch organization to review.
+              . Their team reviews this in its own workspace.
             </p>
           )}
         </div>
@@ -477,60 +517,101 @@ export default function App() {
     );
 
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {mobileNav && (
         <button
-          className="brand"
-          onClick={() => window.location.assign("/")}
-          aria-label="Janus home"
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMobileNav(false)}
+        />
+      )}
+      <aside
+        id="workspace-sidebar"
+        className={`sidebar ${mobileNav ? "mobile-open" : ""}`}
+        aria-label="Workspace navigation"
+      >
+        <div className="sidebar-brand-row">
+          <button
+            className="brand"
+            onClick={() => window.location.assign("/")}
+            aria-label="Janus home"
+          >
+            <span>Janus</span>
+          </button>
+          <button
+            type="button"
+            className="icon-button sidebar-collapse-control"
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="workspace-sidebar"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <SidebarPanelIcon />
+          </button>
+          <button
+            type="button"
+            ref={mobileCloseRef}
+            className="icon-button sidebar-mobile-close"
+            aria-label="Close navigation"
+            onClick={() => setMobileNav(false)}
+          >
+            <X size={19} />
+          </button>
+        </div>
+        <div
+          className="workspace-picker workspace-identity"
+          title={org?.name || organizationId}
+          aria-label={`${org?.name || organizationId} workspace`}
         >
-          <span>Janus</span>
-        </button>
-        <div className="workspace-picker">
           <span className="organization-avatar">
-            <OrganizationLogo id={organizationId} name={org?.name || ""} />
+            <OrganizationLogo
+              id={organizationId}
+              name={org?.name || organizationId}
+            />
           </span>
           <div>
-            <span className="workspace-label">WORKSPACE</span>
-            <select
-              aria-label="Active organization"
-              value={organizationId}
-              onChange={(event) => selectOrganization(event.target.value)}
-            >
-              {(
-                workspaceState?.organizations || [
-                  { id: "notion", name: "Notion" },
-                  { id: "aws", name: "Amazon Web Services" },
-                  { id: "google", name: "Google Cloud" },
-                ]
-              )
-                .filter((item) => canAccessOrganization(item.id))
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-            </select>
+            <span className="workspace-label">
+              {isVendor ? "VENDOR WORKSPACE" : "CLIENT WORKSPACE"}
+            </span>
+            <strong>{org?.name || organizationId}</strong>
           </div>
-          <ChevronDown size={14} />
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav>
           {(
             [
-              { id: "overview", label: "Overview", icon: Overview },
-              { id: "cases", label: "Cases", icon: Layers3 },
+              {
+                id: "overview",
+                label: isVendor ? "Support overview" : "Overview",
+                icon: Overview,
+              },
+              {
+                id: "cases",
+                label: isVendor ? "Customer cases" : "Cases",
+                icon: Layers3,
+              },
               { id: "integrations", label: "Integrations", icon: Plug },
-              { id: "network", label: "Organization network", icon: Network },
+              {
+                id: "network",
+                label: isVendor ? "Customers" : "Vendors",
+                icon: Network,
+              },
             ] as const
           ).map((item) => (
             <button
               className={`nav-item ${view === item.id ? "active" : ""}`}
               key={item.id}
+              aria-label={item.label}
+              aria-current={view === item.id ? "page" : undefined}
+              title={item.label}
               onClick={() => navigate(item.id)}
             >
               <item.icon size={18} />
-              <span>{item.label}</span>
+              <span className="nav-item-label">{item.label}</span>
               {item.id === "cases" && openCases.length > 0 && (
                 <span className="nav-count">{openCases.length}</span>
               )}
@@ -543,13 +624,29 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumb">
             <button
+              type="button"
+              className="icon-button desktop-sidebar-toggle"
+              aria-label={
+                sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+              }
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!sidebarCollapsed}
+              aria-controls="workspace-sidebar"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            >
+              <SidebarPanelIcon />
+            </button>
+            <button
+              ref={mobileMenuRef}
               className="icon-button mobile-menu"
-              aria-label="Toggle navigation"
+              aria-label={mobileNav ? "Close navigation" : "Open navigation"}
+              aria-expanded={mobileNav}
+              aria-controls="workspace-sidebar"
               onClick={() => setMobileNav(!mobileNav)}
             >
-              <Layers3 size={18} />
+              <SidebarPanelIcon />
             </button>
-            <span>{org?.name || "Notion"}</span>
+            <span>{org?.name || organizationId}</span>
             <ChevronRight size={14} />
             <strong>{viewLabel}</strong>
             {selected && (
@@ -633,7 +730,9 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <h1>Your workspace</h1>
+                      <h1>
+                        {isVendor ? "Customer support" : "Your workspace"}
+                      </h1>
                       <p>
                         {openCases.length} open{" "}
                         {openCases.length === 1 ? "case" : "cases"}
@@ -663,35 +762,48 @@ export default function App() {
                       )}
                     </section>
                   )}
-                  <section className="panel recent-cases">
-                    <div className="panel-heading">
-                      <h2>Cases</h2>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("cases")}
-                      >
-                        View all <ArrowRight size={14} />
-                      </button>
-                    </div>
-                    <CaseTable
+                  {isVendor ? (
+                    <VendorOperations
+                      cases={cases}
                       organizations={state.organizations}
                       organizationId={organizationId}
-                      items={cases}
-                      query=""
-                      caseFilter="all"
-                      openCase={openCase}
-                      setNewCase={setNewCase}
+                      connections={connections}
+                      connectors={state.connectors}
+                      onCase={openCase}
+                      onEvidence={setEvidence}
+                      onConnector={setConnector}
                     />
-                  </section>
+                  ) : (
+                    <section className="panel recent-cases">
+                      <div className="panel-heading">
+                        <h2>Cases</h2>
+                        <button
+                          className="text-button"
+                          onClick={() => navigate("cases")}
+                        >
+                          View all <ArrowRight size={14} />
+                        </button>
+                      </div>
+                      <CaseTable
+                        organizations={state.organizations}
+                        organizationId={organizationId}
+                        items={cases}
+                        query=""
+                        caseFilter="all"
+                        openCase={openCase}
+                        setNewCase={setNewCase}
+                      />
+                    </section>
+                  )}
                 </>
               )}
 
-              {view === "cases" && !selected && (
+              {view === "cases" && !selected && !selectedCaseId && (
                 <>
                   <div className="page-heading">
                     <div>
                       <div className="eyebrow">INVESTIGATIONS</div>
-                      <h1>Cases</h1>
+                      <h1>{isVendor ? "Customer cases" : "Cases"}</h1>
                       <p>A complete record of the work between companies.</p>
                     </div>
                     <button
@@ -743,11 +855,19 @@ export default function App() {
                 </>
               )}
 
+              {view === "cases" && selectedCaseId && !selected && (
+                <section className="empty-state">
+                  <h2>Case unavailable</h2>
+                  <p>This case is not available in your workspace.</p>
+                  <button className="button secondary" onClick={() => navigate("cases")}>Back to cases</button>
+                </section>
+              )}
+
               {view === "cases" && selected && (
                 <>
                   <button
                     className="back-link"
-                    onClick={() => setSelectedCaseId(null)}
+                    onClick={() => navigate("cases")}
                   >
                     <ArrowLeft size={14} />
                     All cases
@@ -844,16 +964,12 @@ export default function App() {
                       supportCase={selected}
                       organizations={state.organizations}
                       organizationId={organizationId}
-                      accessibleOrganizationIds={accessibleIDs}
-                      onOrganizationChange={selectOrganization}
                     />
                   </details>
                   <div className="case-layout">
                     <section className="case-main">
                       <div className="case-tabs">
-                        {(
-                          ["activity", "evidence", "conversation"] as const
-                        ).map((tab) => (
+                        {(["activity", "evidence"] as const).map((tab) => (
                           <button
                             className={caseTab === tab ? "selected" : ""}
                             key={tab}
@@ -866,11 +982,7 @@ export default function App() {
                             ) : (
                               <MessageSquare size={15} />
                             )}
-                            {tab === "activity"
-                              ? "Thread"
-                              : tab === "conversation"
-                                ? "Messages"
-                                : "Evidence"}
+                            {tab === "activity" ? "Timeline" : "Evidence"}
                             {tab === "evidence" && (
                               <span className="count-pill">
                                 {
@@ -905,69 +1017,14 @@ export default function App() {
                           </div>
                         </div>
                       )}
-                      {caseTab !== "evidence" && (
-                        <>
-                          <div className="timeline-toolbar">
-                            <span>
-                              {caseTab === "conversation"
-                                ? "AGENT CORRESPONDENCE"
-                                : "INVESTIGATION TIMELINE"}
-                            </span>
-                            <label>
-                              <SlidersHorizontal size={13} />
-                              <select
-                                aria-label="Filter activity visibility"
-                                value={eventFilter}
-                                onChange={(event) =>
-                                  setEventFilter(event.target.value)
-                                }
-                              >
-                                <option value="all">
-                                  All visible activity
-                                </option>
-                                <option value="shared">Shared only</option>
-                                <option value="private">Private only</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div className="timeline">
-                            {selected.events
-                              .filter(
-                                (event) =>
-                                  (event.visibility === "shared" ||
-                                    event.organizationId === organizationId) &&
-                                  (caseTab !== "conversation" ||
-                                    event.type === "message") &&
-                                  (eventFilter === "all" ||
-                                    event.visibility === eventFilter),
-                              )
-                              .map((event) => (
-                                <TimelineEvent key={event.id} event={event} />
-                              ))}
-                            {!selected.events.some(
-                              (event) =>
-                                (event.visibility === "shared" ||
-                                  event.organizationId === organizationId) &&
-                                (caseTab !== "conversation" ||
-                                  event.type === "message") &&
-                                (eventFilter === "all" ||
-                                  event.visibility === eventFilter),
-                            ) && (
-                              <div className="empty">
-                                <MessageSquare size={25} />
-                                <h3>
-                                  {caseTab === "conversation"
-                                    ? "The conversation starts with evidence."
-                                    : "No activity in this view."}
-                                </h3>
-                                <p>
-                                  Continue the investigation to collect the next
-                                  update.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </>
+                      {caseTab === "activity" && (
+                        <CaseTimeline
+                          key={selected.id}
+                          supportCase={selected}
+                          organizations={state.organizations}
+                          organizationId={organizationId}
+                          onEvidence={setEvidence}
+                        />
                       )}
                       {caseTab === "evidence" && (
                         <div className="evidence-list">
@@ -998,8 +1055,8 @@ export default function App() {
                                         <Globe2 size={12} />
                                       )}
                                       {item.visibility === "private"
-                                        ? "Private to your organization"
-                                        : "Shared with counterpart"}
+                                        ? `Only ${org?.name}`
+                                        : `Shared with ${counterpartName}`}
                                     </span>
                                     <span>
                                       {item.simulated
@@ -1070,147 +1127,24 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">{org?.name}</div>
                       <h1>Integrations</h1>
-                      <p>Bring your team’s tools into the investigation.</p>
+                      <p>
+                        {isVendor
+                          ? "Your support team's conversations, service telemetry, and internal tools."
+                          : "Your team's conversations, signals, and connected services."}
+                      </p>
                     </div>
                     <span className="integration-total">
                       <Plug size={16} />
-                      {liveConnections.length} connected
+                      {connected.length} connected
                     </span>
                   </div>
-                  <div className="catalog-top">
-                    <label className="search-field">
-                      <Search size={17} />
-                      <input
-                        aria-label="Search integrations"
-                        placeholder="Search integrations…"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                      />
-                    </label>
-                    <span>
-                      {state.connectors.length} integrations available
-                    </span>
-                  </div>
-                  <div className="catalog-layout">
-                    <aside className="catalog-filters">
-                      {[
-                        "All integrations",
-                        "Connected",
-                        "Observability",
-                        "Collaboration",
-                        "Cloud & data",
-                        "Extensibility",
-                      ].map((item) => (
-                        <button
-                          className={category === item ? "selected" : ""}
-                          key={item}
-                          onClick={() => setCategory(item)}
-                        >
-                          {item}
-                          <span>
-                            {item === "All integrations"
-                              ? state.connectors.length
-                              : item === "Connected"
-                                ? connections.filter(
-                                    (connection) =>
-                                      connection.status === "connected",
-                                  ).length
-                                : state.connectors.filter(
-                                    (def) => def.category === item,
-                                  ).length}
-                          </span>
-                        </button>
-                      ))}
-                      <div className="catalog-note">
-                        <LockKeyhole size={16} />
-                        <p>
-                          Connections belong to <strong>{org?.name}</strong>.
-                          Credentials are never stored in your browser.
-                        </p>
-                      </div>
-                    </aside>
-                    <div className="connector-grid">
-                      {state.connectors
-                        .filter(
-                          (item) =>
-                            (category === "All integrations" ||
-                              (category === "Connected"
-                                ? connections.some(
-                                    (connection) =>
-                                      connection.connectorId === item.id &&
-                                      connection.status === "connected",
-                                  )
-                                : item.category === category)) &&
-                            `${item.name} ${item.description}`
-                              .toLowerCase()
-                              .includes(query.toLowerCase()),
-                        )
-                        .map((item) => {
-                          const connection = connections.find(
-                            (connection) => connection.connectorId === item.id,
-                          );
-                          return (
-                            <button
-                              className="connector-card"
-                              key={item.id}
-                              onClick={() => setConnector(item)}
-                            >
-                              <div className="connector-card-top">
-                                <ConnectorIcon connector={item} />
-                                {connection?.status === "connected" ? (
-                                  <span
-                                    className={`connection-badge ${connection.mode === "live" ? "live" : ""}`}
-                                  >
-                                    <span />
-                                    Connected
-                                  </span>
-                                ) : connection?.status === "error" ? (
-                                  <span className="connection-badge error">
-                                    Needs attention
-                                  </span>
-                                ) : (
-                                  <ArrowUpRight size={17} />
-                                )}
-                              </div>
-                              <h3>{item.name}</h3>
-                              <p>{item.description}</p>
-                              <div className="connector-card-bottom">
-                                <span>{item.category}</span>
-                                <span>
-                                  {item.operations.length}{" "}
-                                  {item.operations.length === 1
-                                    ? "tool"
-                                    : "tools"}{" "}
-                                  <ChevronRight size={13} />
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      {!state.connectors.some(
-                        (item) =>
-                          (category === "All integrations" ||
-                            (category === "Connected"
-                              ? connections.some(
-                                  (connection) =>
-                                    connection.connectorId === item.id &&
-                                    connection.status === "connected",
-                                )
-                              : item.category === category)) &&
-                          `${item.name} ${item.description}`
-                            .toLowerCase()
-                            .includes(query.toLowerCase()),
-                      ) && (
-                        <div className="empty catalog-empty">
-                          <Unplug size={27} />
-                          <h3>No integrations found</h3>
-                          <p>Try another category or search.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <IntegrationCatalog
+                    connectors={state.connectors}
+                    connections={connections}
+                    onSelect={setConnector}
+                    organizationName={org?.name || organizationId}
+                  />
                 </>
               )}
 
@@ -1218,60 +1152,49 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">CONNECTED ORGANIZATIONS</div>
-                      <h1>Your network</h1>
-                      <p>Shared investigations. Independent workspaces.</p>
+                      <h1>{isVendor ? "Your customers" : "Your vendors"}</h1>
+                      <p>
+                        {isVendor
+                          ? "Customer context and open investigations, in one place."
+                          : "The companies your team works with, and the cases connecting you."}
+                      </p>
                     </div>
                   </div>
-                  <section className="network-canvas">
-                    <div className="network-grid-bg" />
-                    {state.organizations.map((item, index) => (
-                      <div className="network-node" key={item.id}>
-                        <div className="network-node-heading">
-                          <span
-                            className={`organization-avatar large ${index ? "vendor" : ""}`}
-                          >
-                            <OrganizationLogo id={item.id} name={item.name} />
-                          </span>
-                          <span className="subtle-label">{item.role}</span>
-                        </div>
-                        <h2>{item.name}</h2>
-                        <p>
-                          {index
-                            ? "Product knowledge, infrastructure, and account context."
-                            : "Application context, customer impact, and local diagnostics."}
-                        </p>
-                        <div className="network-agent">
-                          <span className="agent-initial">
-                            {item.agentName.slice(0, 1)}
-                          </span>
-                          <div>
-                            <strong>{item.agentName}</strong>
-                            <span>Operational agent</span>
+                  <section className="partner-grid">
+                    {partners.map((partner) => {
+                      const partnerCases = cases.filter(
+                        (item) =>
+                          (isVendor ? item.customerId : item.vendorId) ===
+                          partner.id,
+                      );
+                      return (
+                        <article className="partner-card" key={partner.id}>
+                          <OrganizationLogo
+                            id={partner.id}
+                            name={partner.name}
+                          />
+                          <h2>{partner.name}</h2>
+                          <p>
+                            {
+                              partnerCases.filter((item) => !isFinished(item))
+                                .length
+                            }{" "}
+                            open investigations
+                          </p>
+                          <div className="partner-case-list">
+                            {partnerCases.map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => openCase(item.id)}
+                              >
+                                <span>{item.title}</span>
+                                <ChevronRight size={14} />
+                              </button>
+                            ))}
                           </div>
-                        </div>
-                        <div className="node-footer">
-                          <span>
-                            <Server size={13} />
-                            {item.deployment === "hosted"
-                              ? "Hosted configuration"
-                              : "Self-hosted configuration"}
-                          </span>
-                          {item.id === organizationId ? (
-                            <span className="you-label">YOUR VIEW</span>
-                          ) : canAccessOrganization(item.id) ? (
-                            <button
-                              className="text-button"
-                              onClick={() => selectOrganization(item.id)}
-                            >
-                              Switch view <ArrowRight size={13} />
-                            </button>
-                          ) : (
-                            <span className="subtle-label">COUNTERPART</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                        </article>
+                      );
+                    })}
                   </section>
                 </>
               )}
@@ -1325,16 +1248,15 @@ export default function App() {
                 event.preventDefault();
                 void act("create", async () => {
                   const created = await api<SupportCase>("/api/cases", {
+                    organizationId,
                     title: caseTitle,
                     summary: caseSummary,
-                    customerId: organizationId,
-                    vendorId:
-                      caseVendor ||
-                      state?.organizations.find(
-                        (item) =>
-                          item.id !== organizationId &&
-                          item.role.toLowerCase() === "vendor",
-                      )?.id,
+                    customerId: isVendor
+                      ? caseVendor || partners[0]?.id
+                      : organizationId,
+                    vendorId: isVendor
+                      ? organizationId
+                      : caseVendor || partners[0]?.id,
                   });
                   setNewCase(false);
                   openCase(created.id);
@@ -1342,28 +1264,18 @@ export default function App() {
               }}
             >
               <label>
-                Vendor organization
+                {isVendor ? "Customer organization" : "Vendor organization"}
                 <select
                   required
-                  value={
-                    caseVendor ||
-                    state?.organizations.find(
-                      (item) =>
-                        item.id !== organizationId &&
-                        item.role.toLowerCase() === "vendor",
-                    )?.id ||
-                    ""
-                  }
+                  value={caseVendor || partners[0]?.id || ""}
                   onChange={(event) => setCaseVendor(event.target.value)}
                 >
                   <option value="">Choose an organization</option>
-                  {state?.organizations
-                    .filter((item) => item.id !== organizationId)
-                    .map((item) => (
-                      <option value={item.id} key={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
+                  {partners.map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -1435,7 +1347,9 @@ export default function App() {
                 ) : (
                   <Globe2 size={13} />
                 )}
-                {evidence.visibility}
+                {evidence.visibility === "private"
+                  ? `Only ${org?.name}`
+                  : `Shared with ${counterpartName}`}
               </span>
               <span>Collected {time(evidence.collectedAt)}</span>
             </div>
@@ -1444,51 +1358,6 @@ export default function App() {
         </div>
       )}
     </div>
-  );
-}
-
-function TimelineEvent({ event }: { event: CaseEvent }) {
-  const Icon =
-    event.type === "message"
-      ? MessageSquare
-      : event.type === "evidence"
-        ? Database
-        : event.type === "verification"
-          ? CheckCircle2
-          : event.type === "approval"
-            ? ShieldCheck
-            : event.type === "signal"
-              ? Activity
-              : event.type === "action"
-                ? Zap
-                : CircleDot;
-  return (
-    <article className={`timeline-event event-${event.type}`}>
-      <span className="timeline-icon">
-        <Icon size={16} />
-      </span>
-      <div className="event-content">
-        <div className="event-meta">
-          <strong>{event.actor}</strong>
-          <span className="event-type">{event.type}</span>
-          <time>{time(event.createdAt)}</time>
-        </div>
-        <div className={event.type === "message" ? "message-body" : ""}>
-          <h3>{event.title}</h3>
-          <p>{event.body}</p>
-        </div>
-        <span className="event-visibility">
-          {event.visibility === "private" ? (
-            <LockKeyhole size={11} />
-          ) : (
-            <Globe2 size={11} />
-          )}
-          {event.visibility === "private"
-            ? "Private to your organization"
-            : "Shared across organizations"}
-        </span>
-      </div>
-    </article>
   );
 }
 

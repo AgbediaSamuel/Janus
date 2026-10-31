@@ -106,7 +106,8 @@ test("credentials are never returned in state and connector writes cannot run th
   });
   assert.equal(testWrite.status, 400);
   const vendor = await request("/api/state?organizationId=aws");
-  assert.equal(vendor.data.connections.length, 0);
+  assert(vendor.data.connections.length > 0);
+  assert(vendor.data.connections.every((item: any) => item.organizationId === "aws"));
 });
 
 test("unknown organizations cannot read state or register credentials", async () => {
@@ -140,4 +141,18 @@ test("encrypted credentials are bound to their organization", () => {
     if (oldKey === undefined) delete process.env.JANUS_ENCRYPTION_KEY;
     else process.env.JANUS_ENCRYPTION_KEY = oldKey;
   }
+});
+
+test("vendors can create cases for registered customers but cannot select an unrelated workspace", async () => {
+  const created = await request("/api/cases", { organizationId: "aws", customerId: "ramp", vendorId: "aws", title: "Attachment issue from support", summary: "A customer requested an investigation" });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.customerId, "ramp");
+  assert.equal(created.data.vendorId, "aws");
+  assert(created.data.events.every((entry: any) => entry.visibility === "shared" || entry.organizationId === "aws"));
+  assert.equal((await request("/api/cases", { organizationId: "notion", customerId: "ramp", vendorId: "aws" })).status, 403);
+  assert.equal((await request("/api/cases", { organizationId: "outsider", customerId: "ramp", vendorId: "aws" })).status, 403);
+  assert.equal((await request("/api/cases", { organizationId: "aws", customerId: "unknown", vendorId: "aws" })).status, 400);
+  assert.equal((await request("/api/cases", { organizationId: "aws", customerId: "google", vendorId: "aws" })).status, 400);
+  const notion = (await request("/api/state?organizationId=notion")).data;
+  assert(!notion.cases.some((entry: any) => entry.id === created.data.id));
 });

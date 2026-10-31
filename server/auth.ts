@@ -15,7 +15,7 @@ export async function authenticate(
     if (!liveMode) {
       res.locals.identity = {
         userId: "local-demo",
-        organizationIds: ["notion", "aws", "google"],
+        organizationIds: ["notion", "ramp", "aws", "google"],
       } satisfies Identity;
       next();
       return;

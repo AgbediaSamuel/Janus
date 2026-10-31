@@ -36,7 +36,7 @@ Downloaded from pinned npm package tarballs using in-memory archive reads: [Devi
 
 ## Connector mapping
 
-Every one of the 27 connector IDs has an explicit, distinct asset mapping in `ProviderLogo.tsx`. Azure Monitor, Data Explorer/Kusto, Blob Block, CloudWatch, S3, BigQuery, and Cloud Logging use service-specific icons from the providers’ own downloadable icon libraries. Work IQ uses Microsoft’s official identity mark; it is not presented as a separate Work IQ logomark. PostgreSQL uses its original elephant, remote MCP uses the Model Context Protocol mark, and generic HTTP alone uses the Janus protocol glyph.
+Every one of the 30 connector IDs has an explicit, distinct asset mapping in `ProviderLogo.tsx`. Azure Monitor, Data Explorer/Kusto, Blob Block, CloudWatch, S3, BigQuery, and Cloud Logging use service-specific icons from the providers’ own downloadable icon libraries. Work IQ uses Microsoft’s official identity mark; it is not presented as a separate Work IQ logomark. PostgreSQL uses its original elephant, remote MCP uses the Model Context Protocol mark, and generic HTTP alone uses the Janus protocol glyph.
 
 Render the marks without CSS filters, recoloring, or cropping, on the neutral white provider tile. `ProviderLogo` uses an empty image alt because the adjoining provider name supplies the accessible label.
 
@@ -45,3 +45,14 @@ The service icons are not covered by the Devicon or Simple Icons licenses: see [
 ## Organization marks
 
 The workspace picker and case participants also use unchanged Devicon 2.18.0 original SVGs (MIT collection license): [Notion](https://github.com/devicons/devicon/blob/v2.18.0/icons/notion/notion-original.svg), [AWS](https://github.com/devicons/devicon/blob/v2.18.0/icons/amazonwebservices/amazonwebservices-original.svg), and [Google Cloud](https://github.com/devicons/devicon/blob/v2.18.0/icons/googlecloud/googlecloud-original.svg). These identify the example organizations; they do not imply a customer relationship.
+
+## Messaging and customer identity assets
+
+These original SVGs retain their provider colors and paths. They identify integrations or the example customer, not endorsements. Microsoft and Google marks are subject to their owners’ trademark guidelines; the collection MIT/CC0 licenses above do not apply to these files.
+
+| Asset | Official source | Treatment |
+| --- | --- | --- |
+| `teams.svg` | [Microsoft Teams FY26 product icon](https://www.microsoft.com/content/dam/microsoft/bade/images/icons/en-us/m365-app-icons-fy26/Teams-Icon-FY26.svg), linked by the official Microsoft Outlook product page | Full-color original, unchanged |
+| `outlook.svg` | [Microsoft Outlook FY26 product icon](https://www.microsoft.com/content/dam/microsoft/bade/images/icons/en-us/m365-app-icons-fy26/Outlook-Icon-FY26.svg) | Full-color original, unchanged |
+| `gmail.svg` | [Google Gmail 2026 product icon](https://www.gstatic.com/images/branding/productlogos/gmail_2026/v2/web/192px.svg), linked by the official Gmail product page | Full-color original, unchanged |
+| `ramp.svg` | [Ramp official September 2026 media kit](https://assets.ramp.com/nextjs/ramp_september_2026_media_kit.zip), `Ramp media kit September 2026/logos/ramp-logo-black.svg`, linked by [Ramp Press](https://ramp.com/press) | Original black wordmark, unchanged; Ramp’s press page permits royalty-free use of its media-kit images in web/print. Identifies the example client, not an additional connector. |

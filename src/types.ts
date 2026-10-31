@@ -77,6 +77,9 @@ export interface CaseEvent {
     | "system";
   organizationId?: OrganizationID;
   actor: string;
+  channel?: string;
+  actorType?: "agent" | "human" | "system";
+  evidenceIds?: string[];
   title: string;
   body: string;
   createdAt: string;
@@ -118,7 +121,7 @@ export interface SupportCase {
   approvals: Approval[];
   outcome?: string;
   demoService?: {
-    scenario?: "aws-uploads" | "google-indexing";
+    scenario?: "aws-uploads" | "google-indexing" | "ramp-attachments" | "ramp-exports";
     route: "canary" | "stable";
     probes: { requestId: string; status: number; at: string }[];
   };
