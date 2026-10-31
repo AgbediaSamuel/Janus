@@ -31,7 +31,6 @@ Without credentials, Janus provides separate Notion, Ramp, AWS, and Google Cloud
 
 To use actual Terse persistence locally, run `pnpm dev:actors` in a second terminal and set `TERSE_ACTOR_URL=http://127.0.0.1:7100/v1/projects/janus/actors` before starting the API. Start a new case after switching storage modes. Terse becomes authoritative; `.janus/` keeps the local case index. The actor server needs no cloud account.
 
-For local Agent Relay, run `pnpm relay:local` in another terminal, then `pnpm relay:setup` once and restart the Janus API. This runs the official Relaycast engine with SQLite on `127.0.0.1:8787`, provisions distinct Notion, AWS, Ramp, and Google Cloud agents, and sets the existing SDK's `RELAY_BASE_URL` in `.env`. Repeating setup reuses the local workspace. Credentials and the SQLite database stay in ignored `.janus/`; previous hosted Relay settings are saved privately in `.janus/relay-hosted.json`.
 
 ## Model-driven demo
 

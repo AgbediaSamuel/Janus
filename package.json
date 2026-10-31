@@ -16,8 +16,6 @@
     "start": "tsx --env-file-if-exists=.env server/index.ts",
     "test": "tsx --test tests/*.test.ts",
     "dev:actors": "pnpm dlx bun@1.4.4 server/runtime/actor/dev.ts",
-    "relay:local": "relaycast-engine --db .janus/relaycast.db --port 8787",
-    "relay:setup": "tsx scripts/setup-local-relay.ts",
     "smoke:agent": "tsx --env-file-if-exists=.env scripts/smoke-agent.ts"
   },
   "dependencies": {
@@ -42,7 +40,6 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@relaycast/engine": "8.16.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.0.0",

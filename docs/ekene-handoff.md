@@ -45,7 +45,6 @@ Append `/cases/<case-id>` to open the same investigation from either participant
 
 ## The recording flow
 
-The recording now uses the official local Relaycast engine. Start it with `pnpm relay:local`, run `pnpm relay:setup` once to provision the four local identities and update `.env`, then start Janus. Setup reuses the saved local workspace on subsequent runs. Its SQLite state and credentials stay under ignored `.janus/`; previous hosted Relay settings are backed up privately there. Keep the engine running alongside the API and Terse. This removes the hosted Relay dependency while retaining the same Agent Relay SDK and real message delivery.
 
 The monitoring-to-investigation worker now starts outside the monitoring tool's asynchronous context, so it uses its own checkpoint thread rather than inheriting the monitor's checkpoint connection and namespace.
 
