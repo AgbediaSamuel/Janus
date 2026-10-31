@@ -3432,3 +3432,29 @@ main {
     min-height: 34px;
   }
 }
+
+.workspace-identity {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 18px 16px;
+}
+.workspace-identity .workspace-label {
+  margin-bottom: 0;
+  font-size: 10px;
+}
+.workspace-brand-logo {
+  display: block;
+}
+.workspace-brand-ramp {
+  width: 112px;
+  height: 32px;
+}
+@media (min-width: 721px) {
+  .sidebar-collapsed .workspace-identity {
+    align-items: center;
+  }
+  .sidebar-collapsed .workspace-brand-logo {
+    max-width: 46px;
+  }
+}

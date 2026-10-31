@@ -554,17 +554,15 @@ export default function App({ route }: { route: WorkspaceRoute }) {
           title={org?.name || organizationId}
           aria-label={`${org?.name || organizationId} workspace`}
         >
-          <span className="organization-avatar">
-            <OrganizationLogo
-              id={organizationId}
-              name={org?.name || organizationId}
-            />
-          </span>
+          <ProviderLogo
+            connectorId={organizationId}
+            size={40}
+            className={`workspace-brand-logo workspace-brand-${organizationId}`}
+          />
           <div>
             <span className="workspace-label">
               {isVendor ? "VENDOR WORKSPACE" : "CLIENT WORKSPACE"}
             </span>
-            <strong>{org?.name || organizationId}</strong>
           </div>
         </div>
         <div className="nav-label">WORKSPACE</div>
@@ -912,7 +910,9 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                               <ArrowRight size={15} />
                             )}
                             {selected.status === "awaiting_approval"
-                              ? "Waiting for decision"
+                              ? selected.approvals.some((approval) => approval.status === "pending" && approval.organizationId === organizationId)
+                                ? "Your approval needed"
+                                : `Waiting for ${counterpartName} approval`
                               : "Continue investigation"}
                           </button>
                         )}
