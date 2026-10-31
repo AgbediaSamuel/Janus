@@ -1,0 +1,90 @@
+# Janus
+
+Janus connects the support agents on both sides of a B2B incident. Each organization investigates its own systems, exchanges evidence through Agent Relay, requests approved changes, and verifies recovery from the customer's side.
+
+Built in TypeScript with pnpm, React, Deep Agents, Terse Durable Actors, Supabase, and Freestyle VMs. The console takes visual inspiration from o11 and Stripe. The agent architecture takes inspiration from Traverse's scoped tool factories and checkpointed execution; no Traverse application data or credentials are included.
+
+## Run locally
+
+Requires Node.js 22+ and pnpm 10.26.2.
+
+```sh
+pnpm install
+cp .env.example .env
+pnpm dev
+```
+
+Open the Vite URL printed in the terminal, normally `http://127.0.0.1:5173`. The API listens on `127.0.0.1:4318`.
+
+With no credentials, the app runs a clearly labeled guided incident replay. Start a case, advance the investigation, switch to the vendor organization, approve or reject the action, and verify the result. This replay is a fixture, not an AI investigation or a live cloud outage. Its state persists in `.janus/`; connector credentials entered in demo mode remain in server memory only and must be entered again after restart.
+
+To use actual Terse persistence locally, run `pnpm dev:actors` in a second terminal and set `TERSE_ACTOR_URL=http://127.0.0.1:7100/v1/projects/janus/actors` before starting the API. Start a new case after switching storage modes. Terse becomes authoritative; `.janus/` keeps the local case index. The actor server needs no cloud account.
+
+## Model-driven demo
+
+The same case has an executable local service fixture. A checkout request returns HTTP 503 while its tenant points to an unhealthy canary and returns HTTP 200 after the vendor's approved rollback. Agents have separate customer traces/probes and vendor rollout tools; the customer cannot inspect vendor configuration directly.
+
+Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. Configure separate customer/vendor Agent Relay identities for actual cross-company messages. Start a fresh demo case and choose **Run investigation** rather than advancing the guided replay. Freestyle tools become available when `FREESTYLE_API_KEY` is set. All local fixture evidence remains labeled simulated, even when a real model investigates it.
+
+`POST /api/demo/service/:caseId/checkout` exercises the fixture directly. The model-driven path requires account setup and has not been validated against paid providers without those credentials.
+
+## Connect the accounts
+
+Ekene's provider-by-provider setup and scope checklist is in [docs/connectors.md](docs/connectors.md). Each catalog item has executable operations, input validation, credential fields, and documentation links. Account creation, token issuance, production permissions, and live provider validation are intentionally left to the operators.
+
+For the platform:
+
+1. Create a Supabase project and apply [the migration](supabase/migrations/202610310001_janus.sql).
+2. Create Supabase Auth users. Add organizations and their membership rows using an administrative connection. Browser clients cannot grant themselves membership or read encrypted connector secrets.
+3. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
+4. Generate `JANUS_ENCRYPTION_KEY` with `openssl rand -base64 32`. Keep it in the worker's secret configuration. Connector secrets are encrypted with AES-256-GCM and bound to their organization.
+5. Set `DATABASE_URL` to a direct or session-pooler Postgres connection for LangGraph checkpoints. Do not use a transaction pooler: per-case advisory locks require session affinity.
+6. Deploy the Terse actor and configure `TERSE_ACTOR_URL` and any required `TERSE_API_KEY`. Provision Relay agents, then set `RELAY_WORKSPACE_KEY` and `RELAY_AGENT_TOKENS_JSON`.
+7. Set `JANUS_MODE=live`. Live mode requires Supabase authentication and Terse storage; it does not silently fall back to demo data.
+
+Example organization setup, after replacing the Auth user IDs:
+
+```sql
+insert into public.organizations (id, name, role, agent_name, deployment) values
+  ('northstar', 'Northstar', 'Customer', 'Nova', 'hosted'),
+  ('contoso', 'Contoso Cloud', 'Vendor', 'Atlas', 'self-hosted');
+insert into public.organization_members (organization_id, user_id) values
+  ('northstar', '<customer-auth-user-uuid>'),
+  ('contoso', '<vendor-auth-user-uuid>');
+```
+
+## Runtime ownership
+
+| Component               | Responsibility                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Terse                   | Authoritative live case state, evidence, pending runs, approvals, and event receipts                       |
+| Deep Agents / LangGraph | Each organization's reasoning, scoped tools, private working context, and persistent execution checkpoints |
+| Agent Relay             | Authenticated partner messages; incoming deliveries are persisted before acknowledgement                   |
+| Supabase                | Auth, organization membership, case index, and encrypted connector configuration                           |
+| Freestyle               | Organization-and-case-scoped reproduction VMs; production credentials are not copied into them             |
+| React console           | Cases, evidence, timeline, integration configuration, and action review                                    |
+
+Pending agent turns survive worker restarts. The checkpoint layer resumes unfinished graph work and recognizes completed turn IDs. External systems still determine their own operation semantics: a network failure after a write may leave its outcome uncertain. Janus records that condition for review and does not blindly replay the write.
+
+Run one Janus API/worker replica per deployment for this version. The application queue is intentionally single-worker; per-graph Postgres locks and Terse version checks do not make the queue a distributed scheduler. The current hosted control plane manages both example organizations and enforces their access in the API. Fully separate company deployments, partner onboarding, and independent trust domains still require a federation design; the `deployment` label does not provision infrastructure.
+
+Detailed setup, runtime interfaces, and verification notes: [server/runtime/README.md](server/runtime/README.md).
+
+## Deployment
+
+The Vercel configuration builds the frontend. Deploy the API/worker separately on a persistent host using the included Dockerfile or `pnpm start`. Set `HOST=0.0.0.0` only on the intended deployment host.
+
+- Frontend: set `VITE_API_URL` to the API origin and the public Supabase client settings, then build/deploy on Vercel.
+- Backend: set `JANUS_WEB_ORIGIN` to the exact frontend origin and configure the server-only secrets.
+- Terse: deploy the actor separately or run its local development server for local testing.
+
+Do not place service-role keys, model keys, provider credentials, or the encryption key in variables prefixed with `VITE_`.
+
+## Checks
+
+```sh
+pnpm test
+pnpm build
+```
+
+Tests cover connector request construction and failures, organization isolation, approval replay protection, credential encryption, Relay identity validation, actor versioning, and Deep Agents checkpoint replay with a fake test model. Provider mocks do not establish that live account scopes or endpoints are configured correctly. The Terse local runtime has also been exercised through actual HTTP calls across a server restart.
