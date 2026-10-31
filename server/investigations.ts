@@ -133,6 +133,7 @@ export class InvestigationService {
     await this.store.updateCase(caseId, (item) => {
       if (![item.customerId, item.vendorId].includes(organizationId))
         throw new HttpError(403, "Organization is not a case participant");
+      if (item.automationPaused) return;
       if (item.step > 0 && !humanActor)
         throw new HttpError(
           409,
@@ -175,6 +176,16 @@ export class InvestigationService {
 
   async recover() {
     for (const item of await this.store.listCases()) {
+      if (item.automationPaused) {
+        if (item.runs?.some((run) => ["pending", "running"].includes(run.status))) {
+          await this.store.updateCase(item.id, (current) => {
+            for (const run of current.runs || []) {
+              if (["pending", "running"].includes(run.status)) run.status = "cancelled";
+            }
+          });
+        }
+        continue;
+      }
       await this.watchCase(item.id);
       if (item.runs?.some((run) => run.status === "running")) {
         await this.store.updateCase(item.id, (current) => {
@@ -210,7 +221,7 @@ export class InvestigationService {
   private async watchCase(caseId: string) {
     if (!process.env.RELAY_WORKSPACE_KEY) return;
     const item = await this.store.getCase(caseId);
-    if (!item) return;
+    if (!item || item.automationPaused) return;
     const tokens = configuredRelayTokens();
     for (const [organizationId, partnerId] of [
       [item.customerId, item.vendorId],
@@ -252,7 +263,7 @@ export class InvestigationService {
       const cases = await this.store.listCases();
       const next = cases
         .flatMap((item) =>
-          (item.runs || [])
+          (item.automationPaused ? [] : item.runs || [])
             .filter(
               (run) =>
                 run.status === "pending" &&
@@ -307,6 +318,7 @@ export class InvestigationService {
   async acceptMessage(message: ReceivedRelayMessage) {
     let accepted = false;
     await this.store.updateCase(message.caseId, (item) => {
+      if (item.automationPaused) return;
       if (
         ![item.customerId, item.vendorId].includes(message.from) ||
         ![item.customerId, item.vendorId].includes(message.to) ||

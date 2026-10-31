@@ -113,6 +113,7 @@ export interface Approval {
 }
 
 export interface SupportCase {
+  automationPaused?: boolean;
   id: string;
   title: string;
   summary: string;
@@ -144,7 +145,7 @@ export interface SupportCase {
     kind?: "conversation" | "investigation";
     replyVisibility?: "private" | "shared";
     sourceEventId?: string;
-    status: "pending" | "running" | "completed" | "failed";
+    status: "pending" | "running" | "completed" | "failed" | "cancelled";
     createdAt: string;
   }[];
 }
