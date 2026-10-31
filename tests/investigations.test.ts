@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -54,6 +55,35 @@ function factory(
     close: async () => {},
   });
 }
+
+test("investigation worker does not inherit the triggering monitoring tool context", async () => {
+  const fixture = await temporaryStore();
+  const toolContext = new AsyncLocalStorage<{ checkpointNamespace: string }>();
+  const observed: unknown[] = [];
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async () => {
+      observed.push(toolContext.getStore());
+      assert.equal(toolContext.getStore(), undefined);
+    }),
+  );
+  try {
+    const item = newCase();
+    await fixture.store.createCase(item);
+    await toolContext.run({ checkpointNamespace: "tools:monitor" }, () =>
+      service.enqueueHuman(item.id, item.customerId, "Investigate the latest upload signal", "Notion team"),
+    );
+    await until(async () => {
+      const status = (await fixture.store.getCase(item.id))?.runs?.[0].status;
+      return status === "completed" || status === "failed";
+    });
+    assert.deepEqual(observed, [undefined]);
+    assert.equal((await fixture.store.getCase(item.id))?.runs?.[0].status, "completed");
+  } finally {
+    service.close();
+    await fixture.cleanup();
+  }
+});
 
 test("agent-driven demo executes a bad probe, vendor-approved rollback, and fresh customer verification through the API", async () => {
   const fixture = await temporaryStore();

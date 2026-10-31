@@ -45,6 +45,10 @@ Append `/cases/<case-id>` to open the same investigation from either participant
 
 ## The recording flow
 
+The recording now uses the official local Relaycast engine. Start it with `pnpm relay:local`, run `pnpm relay:setup` once to provision the four local identities and update `.env`, then start Janus. Setup reuses the saved local workspace on subsequent runs. Its SQLite state and credentials stay under ignored `.janus/`; previous hosted Relay settings are backed up privately there. Keep the engine running alongside the API and Terse. This removes the hosted Relay dependency while retaining the same Agent Relay SDK and real message delivery.
+
+The monitoring-to-investigation worker now starts outside the monitoring tool's asynchronous context, so it uses its own checkpoint thread rather than inheriting the monitor's checkpoint connection and namespace.
+
 Open `/admin` and confirm reset for the automatic recording entry. Reset restores the local fixtures and introduces a new upload-failure monitoring signal. A real monitoring agent reads that signal and calls `open_support_case`; that creates a fresh case and queues the customer investigator. The admin result links directly to the same case in Notion and AWS. Each reset uses a new signal/checkpoint identity, so previous conversation history is not replayed. The incident is repeatable; the agents' wording and timing are live, not a scripted video replay. Missing runtime configuration is shown explicitly without claiming a case was opened.
 
 Outgoing messages now distinguish Relay acceptance from confirmed recipient receipt. One invalid or stale message no longer shuts down the organization-pair listener. A received message replaces its matching outgoing bubble using exact IDs.

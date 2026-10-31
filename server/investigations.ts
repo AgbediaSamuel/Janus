@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AsyncResource } from "node:async_hooks";
 import { Store } from "./store";
 import { addEvidence, event, projectCase } from "./cases";
 import { HttpError } from "./config";
@@ -16,6 +17,7 @@ import {
 export type InvestigatorFactory = typeof createInvestigator;
 
 export class InvestigationService {
+  private workerContext = new AsyncResource("JanusInvestigationWorker");
   private draining = false;
   private wakeRequested = false;
   private subscriptions = new Map<string, AbortController>();
@@ -191,7 +193,7 @@ export class InvestigationService {
     }
     this.wakeRequested = false;
     this.draining = true;
-    setImmediate(() => {
+    this.workerContext.runInAsyncScope(() => setImmediate(() => {
       void this.drain()
         .catch(() =>
           console.error(
@@ -202,7 +204,7 @@ export class InvestigationService {
           this.draining = false;
           if (this.wakeRequested) this.wake();
         });
-    });
+    }));
   }
 
   private async watchCase(caseId: string) {
@@ -278,7 +280,13 @@ export class InvestigationService {
           current.runs!.find((candidate) => candidate.id === run.id)!.status =
             "completed";
         });
-      } catch {
+      } catch (error) {
+        let detail = error instanceof Error ? `${error.name}: ${error.message}` : "Unknown investigation error";
+        for (const value of Object.values(process.env)) {
+          if (value && value.length > 12) detail = detail.split(value).join("[redacted]");
+        }
+        detail = detail.replace(/(?:sk[-_]|sb_secret_|rk_live_|at_live_|ar_)[A-Za-z0-9_-]+/g, "[redacted]");
+        console.error(`Investigation failed for ${run.organizationId} on ${item.id}: ${detail}`);
         await this.store.updateCase(item.id, (current) => {
           current.runs!.find((candidate) => candidate.id === run.id)!.status =
             "failed";
