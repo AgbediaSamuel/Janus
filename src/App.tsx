@@ -115,11 +115,11 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   return payload as T;
 }
 
-function Status({ value }: { value: string }) {
+function Status({ value, label }: { value: string; label?: string }) {
   return (
     <span className={`status status-${value}`}>
       <span />
-      {statusLabels[value] || value.replaceAll("_", " ")}
+      {label || statusLabels[value] || value.replaceAll("_", " ")}
     </span>
   );
 }
@@ -869,7 +869,14 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                       >
                         {selected.severity}
                       </span>
-                      <Status value={selected.status} />
+                      <Status
+                        value={selected.status}
+                        label={selected.status === "awaiting_approval"
+                          ? selected.approvals.some((approval) => approval.status === "pending" && approval.organizationId === organizationId)
+                            ? "Your approval needed"
+                            : `${counterpartName} approval`
+                          : undefined}
+                      />
                     </div>
                     <h1>{selected.title}</h1>
                     <p>{selected.summary}</p>
@@ -884,12 +891,11 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                         at {time(selected.createdAt)}
                       </span>
                       <div className="button-row">
-                        {!isFinished(selected) && (selected.step > 0 || !selected.runs?.length) && (
+                        {!isFinished(selected) && selected.status !== "awaiting_approval" && (selected.step > 0 || !selected.runs?.length) && (
                           <button
                             className="button primary"
                             disabled={
                               !!busy ||
-                              selected.status === "awaiting_approval" ||
                               ((selected.mode !== "simulation" ||
                                 !!selected.runs?.length) &&
                                 !runtime?.agentsConfigured)
@@ -911,11 +917,7 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                             ) : (
                               <ArrowRight size={15} />
                             )}
-                            {selected.status === "awaiting_approval"
-                              ? selected.approvals.some((approval) => approval.status === "pending" && approval.organizationId === organizationId)
-                                ? "Your approval needed"
-                                : `${counterpartName} approval`
-                              : "Continue investigation"}
+                            Continue investigation
                           </button>
                         )}
                       </div>
