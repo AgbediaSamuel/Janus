@@ -93,4 +93,4 @@ Tests cover connector request construction and failures, organization isolation,
 
 ## Typography
 
-The app uses Söhne through the project owner’s YC access, with a text-only Instrument Serif wordmark. Place the licensed webfont at `public/fonts/Sohne.woff2` before building or deploying. The font binary and local API keys are excluded from the public repository. See [font setup](public/fonts/README.md).
+The app uses Söhne through the project owner’s YC access, with a text-only Söhne semibold wordmark. Place the licensed webfont at `public/fonts/Sohne.woff2` before building or deploying. The font binary and local API keys are excluded from the public repository. See [font setup](public/fonts/README.md).

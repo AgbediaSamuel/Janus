@@ -72,11 +72,11 @@ body {
   justify-content: space-between;
 }
 .landing .lp-wordmark {
-  font-family: "Instrument Serif", serif;
-  font-size: 45px;
-  font-weight: 400;
+  font-family: var(--font-text);
+  font-size: 36px;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.055em;
 }
 .lp-header nav {
   display: flex;
@@ -668,7 +668,7 @@ body {
   border-top: 1px solid var(--lp-line);
 }
 .landing .lp-footer .lp-wordmark {
-  font-size: 36px;
+  font-size: 30px;
 }
 .landing .lp-footer p {
   font-size: 13px;
@@ -898,7 +898,7 @@ body {
     height: 80px;
   }
   .landing .lp-wordmark {
-    font-size: 39px;
+    font-size: 32px;
   }
   .lp-header nav > a:not(.lp-button) {
     display: none;

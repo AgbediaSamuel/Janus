@@ -151,11 +151,11 @@ pre {
   border: 0;
   background: none;
   padding: 0 14px;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: 42px;
+  font-family: var(--font-text);
+  font-size: 34px;
   line-height: 1;
-  font-weight: 400;
-  letter-spacing: -1.2px;
+  font-weight: 600;
+  letter-spacing: -0.055em;
   width: max-content;
 }
 .workspace-picker {
@@ -2839,9 +2839,9 @@ form > label > select {
   border-bottom-color: #687c4c;
 }
 .auth-brand {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
-  letter-spacing: -1.2px;
+  font-family: var(--font-text);
+  font-weight: 600;
+  letter-spacing: -0.055em;
   color: #30322b;
 }
 .outcome.resolved {
