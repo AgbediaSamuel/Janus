@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Overview,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  Bot,
   Box,
   Check,
   CheckCircle2,
@@ -34,14 +34,13 @@ import {
   Server,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Terminal,
   TriangleAlert,
   Unplug,
   Workflow,
   X,
   Zap,
-} from "lucide-react";
+} from "./components/Icons";
 import type {
   Approval,
   CaseEvent,
@@ -53,6 +52,8 @@ import type {
   SupportCase,
 } from "./types";
 import { auth, authorizationHeaders } from "./auth";
+import ProviderLogo from "./components/ProviderLogo";
+import InvestigationMap from "./components/InvestigationMap";
 
 type View = "overview" | "cases" | "integrations" | "network";
 type CaseTab = "activity" | "evidence" | "conversation";
@@ -66,11 +67,12 @@ const statusLabels: Record<string, string> = {
 };
 const time = (date: string) =>
   new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const shortID = (id: string) =>
-  id
-    .replace(/^(?:case|jan)[-_]?/i, "")
-    .slice(0, 7)
-    .toUpperCase();
+const shortID = (id: string) => {
+  const separator = id.indexOf("-");
+  return separator < 0
+    ? id.slice(0, 10).toUpperCase()
+    : `${id.slice(0, separator).toUpperCase()}-${id.slice(separator + 1, separator + 8).toUpperCase()}`;
+};
 const isFinished = (item: SupportCase) =>
   ["resolved", "escalated"].includes(item.status);
 
@@ -124,32 +126,15 @@ function ConnectorIcon({
   connector: Pick<ConnectorDefinition, "id" | "name" | "category">;
   small?: boolean;
 }) {
-  const color = ["datadog", "sentry"].some((name) =>
-    connector.id.includes(name),
-  )
-    ? "violet"
-    : connector.category === "Cloud & data"
-      ? "blue"
-      : connector.category === "Collaboration"
-        ? "coral"
-        : "green";
-  const Icon =
-    connector.category === "Observability"
-      ? Activity
-      : connector.category === "Cloud & data"
-        ? Database
-        : connector.category === "Collaboration"
-          ? MessageSquare
-          : Code2;
   return (
-    <span className={`connector-icon ${color} ${small ? "small" : ""}`}>
-      <Icon size={small ? 15 : 22} />
+    <span className={`connector-icon ${small ? "small" : ""}`}>
+      <ProviderLogo connectorId={connector.id} size={small ? 19 : 32} />
     </span>
   );
 }
 
 export default function App() {
-  const [state, setState] = useState<PlatformState | null>(null);
+  const [workspaceState, setState] = useState<PlatformState | null>(null);
   const [organizationId, setOrganizationId] =
     useState<OrganizationID>("northstar");
   const [view, setView] = useState<View>("overview");
@@ -175,17 +160,26 @@ export default function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [caseVendor, setCaseVendor] = useState("");
   const initialized = useRef(false);
+  const authenticationGeneration = useRef(0);
+  const state =
+    workspaceState?.activeOrganizationId === organizationId
+      ? workspaceState
+      : null;
   const organizationRef = useRef(organizationId);
   organizationRef.current = organizationId;
 
   const refresh = useCallback(async () => {
     const active = organizationRef.current;
+    const generation = authenticationGeneration.current;
     const next = await api<PlatformState>(
       initialized.current
         ? `/api/state?organizationId=${encodeURIComponent(active)}`
         : "/api/state",
     );
-    if (active === organizationRef.current) {
+    if (
+      active === organizationRef.current &&
+      generation === authenticationGeneration.current
+    ) {
       setState(next);
       if (
         !initialized.current ||
@@ -201,9 +195,21 @@ export default function App() {
   }, [refresh, organizationId]);
   useEffect(() => {
     const required = () => {
+      authenticationGeneration.current += 1;
+      initialized.current = false;
       setAuthRequired(true);
       setState(null);
-      initialized.current = false;
+      setEvidence(null);
+      setConnector(null);
+      setSelectedCaseId(null);
+      setNewCase(false);
+      setCaseTitle("");
+      setCaseSummary("");
+      setCaseVendor("");
+      setQuery("");
+      setNotice("");
+      setError("");
+      setBusy("");
     };
     window.addEventListener("janus:auth-required", required);
     return () => window.removeEventListener("janus:auth-required", required);
@@ -304,6 +310,18 @@ export default function App() {
     }
   }
 
+  function selectOrganization(id: OrganizationID) {
+    organizationRef.current = id;
+    setOrganizationId(id);
+    setEvidence(null);
+    setConnector(null);
+    setNewCase(false);
+    setCaseVendor("");
+    setQuery("");
+    setError("");
+    setNotice("");
+  }
+
   function navigate(next: View) {
     setView(next);
     setSelectedCaseId(null);
@@ -318,10 +336,12 @@ export default function App() {
     setQuery("");
   }
 
-  const accessibleIDs = state?.accessibleOrganizationIds;
+  const accessibleIDs = workspaceState?.accessibleOrganizationIds;
   const canAccessOrganization = (id: string) =>
     !accessibleIDs || accessibleIDs.includes(id);
-  const org = state?.organizations.find((item) => item.id === organizationId);
+  const org = workspaceState?.organizations.find(
+    (item) => item.id === organizationId,
+  );
   const cases = state?.cases || [];
   const selected = cases.find((item) => item.id === selectedCaseId);
   const connections = (state?.connections || []).filter(
@@ -355,7 +375,11 @@ export default function App() {
       })
     | undefined;
   const isDemo = runtime?.mode !== "live";
-  const environmentLabel = isDemo ? "Simulation workspace" : "Live workspace";
+  const environmentLabel = isDemo ? "Sample workspace" : "Live workspace";
+  const spotlightCase =
+    openCases.find((item) => item.status === "awaiting_approval") ||
+    openCases[0] ||
+    cases[0];
   const viewLabel = {
     overview: "Overview",
     cases: "Cases",
@@ -445,6 +469,8 @@ export default function App() {
     return (
       <AuthScreen
         onAuthenticated={async () => {
+          authenticationGeneration.current += 1;
+          initialized.current = false;
           setAuthRequired(false);
           setError("");
           await refresh();
@@ -457,33 +483,24 @@ export default function App() {
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
         <button
           className="brand"
-          onClick={() => navigate("overview")}
+          onClick={() => window.location.assign("/")}
           aria-label="Janus home"
         >
-          <span className="brand-symbol">
-            <i />
-            <i />
-          </span>
-          <span>janus</span>
-          <span className="beta">PREVIEW</span>
+          <span>Janus</span>
         </button>
         <div className="workspace-picker">
           <span className="organization-avatar">
-            {organizationId === "northstar" ? "N" : "C"}
+            {org?.name.slice(0, 1).toUpperCase() || ""}
           </span>
           <div>
             <span className="workspace-label">WORKSPACE</span>
             <select
               aria-label="Active organization"
               value={organizationId}
-              onChange={(event) => {
-                setOrganizationId(event.target.value as OrganizationID);
-                setConnector(null);
-                setEvidence(null);
-              }}
+              onChange={(event) => selectOrganization(event.target.value)}
             >
               {(
-                state?.organizations || [
+                workspaceState?.organizations || [
                   { id: "northstar", name: "Northstar" },
                   { id: "contoso", name: "Contoso Cloud" },
                 ]
@@ -502,7 +519,7 @@ export default function App() {
         <nav>
           {(
             [
-              { id: "overview", label: "Overview", icon: Box },
+              { id: "overview", label: "Overview", icon: Overview },
               { id: "cases", label: "Cases", icon: Layers3 },
               { id: "integrations", label: "Integrations", icon: Plug },
               { id: "network", label: "Organization network", icon: Network },
@@ -521,27 +538,11 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <span className="small-spark">
-            <Sparkles size={16} />
-          </span>
-          <strong>Two sides. One resolution.</strong>
-          <p>
-            Your agents keep the investigation moving across company boundaries.
-          </p>
-          <button onClick={() => navigate("network")}>
-            Explore your network <ArrowUpRight size={14} />
-          </button>
-        </div>
         <div className="sidebar-bottom">
           <div className="runtime-dot" />
           <div>
             <strong>{environmentLabel}</strong>
-            <span>
-              {isDemo
-                ? "Demo data · real workflow"
-                : "Connected operational workspace"}
-            </span>
+            <span>{org?.name || "Workspace"}</span>
           </div>
           <ShieldCheck size={16} />
         </div>
@@ -563,7 +564,7 @@ export default function App() {
             {selected && (
               <>
                 <ChevronRight size={14} />
-                <span>JAN-{shortID(selected.id)}</span>
+                <span>{shortID(selected.id)}</span>
               </>
             )}
           </div>
@@ -584,7 +585,7 @@ export default function App() {
               />
             </button>
             <span className="user-avatar">
-              {organizationId === "northstar" ? "N" : "C"}
+              {org?.name.slice(0, 1).toUpperCase() || ""}
             </span>
           </div>
         </header>
@@ -645,12 +646,9 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">OPERATIONS, TOGETHER</div>
-                      <h1>A shared path to resolution.</h1>
-                      <p>
-                        Everything your agents are investigating, across every
-                        boundary.
-                      </p>
+                      <div className="eyebrow">{org?.name}</div>
+                      <h1>Overview</h1>
+                      <p>Your cases, connected teams, and next decisions.</p>
                     </div>
                     <button
                       className="button primary"
@@ -660,6 +658,34 @@ export default function App() {
                       {isDemo ? "Create demo case" : "Create case"}
                     </button>
                   </div>
+                  {spotlightCase && (
+                    <section className="case-spotlight">
+                      <div className="spotlight-heading">
+                        <div>
+                          <span className="eyebrow">
+                            {isFinished(spotlightCase)
+                              ? "LATEST INVESTIGATION"
+                              : "IN FOCUS"}
+                          </span>
+                          <h2>{spotlightCase.title}</h2>
+                        </div>
+                        <button
+                          className="button"
+                          onClick={() => openCase(spotlightCase.id)}
+                        >
+                          Open case <ArrowUpRight size={15} />
+                        </button>
+                      </div>
+                      <InvestigationMap
+                        supportCase={spotlightCase}
+                        organizations={state.organizations}
+                        organizationId={organizationId}
+                        accessibleOrganizationIds={accessibleIDs}
+                        onOrganizationChange={selectOrganization}
+                        compact
+                      />
+                    </section>
+                  )}
                   <div className="metric-grid">
                     <div className="metric">
                       <span>
@@ -725,6 +751,7 @@ export default function App() {
                         </button>
                       </div>
                       <CaseTable
+                        organizations={state.organizations}
                         items={cases.slice(0, 5)}
                         query={query}
                         caseFilter={caseFilter}
@@ -732,69 +759,6 @@ export default function App() {
                         openCase={openCase}
                         setNewCase={setNewCase}
                       />
-                    </section>
-                    <section className="panel agent-panel">
-                      <div className="panel-heading">
-                        <h2>Your agent team</h2>
-                        <span className="subtle-label">
-                          {isDemo ? "DEMO" : "NETWORK"}
-                        </span>
-                      </div>
-                      <div className="agent-orbit">
-                        <span className="agent-orb customer">
-                          <Bot size={27} />
-                        </span>
-                        <span className="orbit-line">
-                          <i />
-                          <i />
-                          <i />
-                        </span>
-                        <span className="agent-orb vendor">
-                          <Bot size={27} />
-                        </span>
-                      </div>
-                      <div className="agent-pair">
-                        <div>
-                          <strong>
-                            {state.organizations.find(
-                              (item) => item.id === "northstar",
-                            )?.agentName || org?.agentName}
-                          </strong>
-                          <span>
-                            {state.organizations.find(
-                              (item) => item.id === "northstar",
-                            )?.name || org?.name}
-                          </span>
-                        </div>
-                        <div>
-                          <strong>
-                            {state.organizations.find(
-                              (item) => item.id === "contoso",
-                            )?.agentName ||
-                              state.organizations.find(
-                                (item) => item.id !== organizationId,
-                              )?.agentName}
-                          </strong>
-                          <span>
-                            {state.organizations.find(
-                              (item) => item.id === "contoso",
-                            )?.name ||
-                              state.organizations.find(
-                                (item) => item.id !== organizationId,
-                              )?.name}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="agent-caption">
-                        <Workflow size={15} />
-                        <span>Independent context. Shared investigation.</span>
-                      </div>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("network")}
-                      >
-                        Inspect organization network <ArrowRight size={14} />
-                      </button>
                     </section>
                   </div>
                   {approvals.length > 0 && (
@@ -812,15 +776,14 @@ export default function App() {
                     </section>
                   )}
                   <section className="integration-strip">
-                    <div className="strip-icon">
-                      <Plug size={22} />
+                    <div className="strip-providers" aria-hidden="true">
+                      <ProviderLogo connectorId="slack" size={25} />
+                      <ProviderLogo connectorId="github" size={25} />
+                      <ProviderLogo connectorId="datadog" size={25} />
                     </div>
                     <div>
-                      <h3>Give your agents the full picture.</h3>
-                      <p>
-                        Connect observability, cloud data, and the tools your
-                        teams already use.
-                      </p>
+                      <h3>Your tools, connected.</h3>
+                      <p>Add the sources your agents need to investigate.</p>
                     </div>
                     <div className="strip-count">
                       <strong>{state.connectors.length}</strong>
@@ -886,6 +849,7 @@ export default function App() {
                   </div>
                   <section className="panel">
                     <CaseTable
+                      organizations={state.organizations}
                       items={visibleCases}
                       query={query}
                       caseFilter={caseFilter}
@@ -908,7 +872,9 @@ export default function App() {
                   </button>
                   <div className="case-detail-heading">
                     <div className="case-title-meta">
-                      <span className="mono">JAN-{shortID(selected.id)}</span>
+                      <span className="mono" title={selected.id}>
+                        {shortID(selected.id)}
+                      </span>
                       <span
                         className={`severity ${selected.severity.toLowerCase()}`}
                       >
@@ -951,7 +917,7 @@ export default function App() {
                             )
                           }
                         >
-                          <Sparkles size={15} />
+                          <ArrowRight size={15} />
                           {busy === "investigate"
                             ? "Investigating…"
                             : "Run agent investigation"}
@@ -989,6 +955,13 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  <InvestigationMap
+                    supportCase={selected}
+                    organizations={state.organizations}
+                    organizationId={organizationId}
+                    accessibleOrganizationIds={accessibleIDs}
+                    onOrganizationChange={selectOrganization}
+                  />
                   <div className="case-layout">
                     <section className="case-main">
                       <div className="case-tabs">
@@ -1140,8 +1113,10 @@ export default function App() {
                                     </span>
                                     <span>
                                       {item.simulated
-                                        ? "Demo evidence"
-                                        : "Live evidence"}
+                                        ? "Sample evidence"
+                                        : item.provenance
+                                          ? "Tool receipt"
+                                          : "Reported evidence"}
                                     </span>
                                   </div>
                                 </div>
@@ -1177,9 +1152,9 @@ export default function App() {
                           .map((item) => (
                             <div className="participant" key={item.id}>
                               <span
-                                className={`organization-avatar ${item.id === "contoso" ? "vendor" : ""}`}
+                                className={`organization-avatar ${item.id === selected.vendorId ? "vendor" : ""}`}
                               >
-                                {item.id === "northstar" ? "N" : "C"}
+                                {item.name.slice(0, 1).toUpperCase()}
                               </span>
                               <div>
                                 <strong>{item.name}</strong>
@@ -1294,11 +1269,9 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">CONTEXT IS EVERYTHING</div>
-                      <h1>Connect your world.</h1>
-                      <p>
-                        The tools your teams use. The context your agents need.
-                      </p>
+                      <div className="eyebrow">{org?.name}</div>
+                      <h1>Integrations</h1>
+                      <p>Bring your team’s tools into the investigation.</p>
                     </div>
                     <span className="integration-total">
                       <Plug size={16} />
@@ -1407,7 +1380,10 @@ export default function App() {
                               <div className="connector-card-bottom">
                                 <span>{item.category}</span>
                                 <span>
-                                  {item.operations.length} tools{" "}
+                                  {item.operations.length}{" "}
+                                  {item.operations.length === 1
+                                    ? "tool"
+                                    : "tools"}{" "}
                                   <ChevronRight size={13} />
                                 </span>
                               </div>
@@ -1443,12 +1419,9 @@ export default function App() {
                 <>
                   <div className="page-heading">
                     <div>
-                      <div className="eyebrow">ACROSS COMPANY BOUNDARIES</div>
-                      <h1>Independent teams. Connected agents.</h1>
-                      <p>
-                        Each organization brings its own context, tools, and
-                        authority.
-                      </p>
+                      <div className="eyebrow">CONNECTED ORGANIZATIONS</div>
+                      <h1>Your network</h1>
+                      <p>Shared investigations. Independent workspaces.</p>
                     </div>
                     <span className="subtle-label">
                       {isDemo ? "DEMO NETWORK" : "ORGANIZATION NETWORK"}
@@ -1473,7 +1446,9 @@ export default function App() {
                             : "Application context, customer impact, and local diagnostics."}
                         </p>
                         <div className="network-agent">
-                          <Bot size={19} />
+                          <span className="agent-initial">
+                            {item.agentName.slice(0, 1)}
+                          </span>
                           <div>
                             <strong>{item.agentName}</strong>
                             <span>Operational agent</span>
@@ -1491,7 +1466,7 @@ export default function App() {
                           ) : canAccessOrganization(item.id) ? (
                             <button
                               className="text-button"
-                              onClick={() => setOrganizationId(item.id)}
+                              onClick={() => selectOrganization(item.id)}
                             >
                               Switch view <ArrowRight size={13} />
                             </button>
@@ -1703,7 +1678,11 @@ export default function App() {
             <div className="modal-heading">
               <span className="eyebrow">
                 {evidence.source} ·{" "}
-                {evidence.simulated ? "DEMO EVIDENCE" : "LIVE EVIDENCE"}
+                {evidence.simulated
+                  ? "SAMPLE EVIDENCE"
+                  : evidence.provenance
+                    ? "TOOL RECEIPT"
+                    : "REPORTED EVIDENCE"}
               </span>
               <button
                 className="icon-button"
@@ -1748,7 +1727,7 @@ function TimelineEvent({ event }: { event: CaseEvent }) {
               ? Activity
               : event.type === "action"
                 ? Zap
-                : Bot;
+                : CircleDot;
   return (
     <article className={`timeline-event event-${event.type}`}>
       <span
@@ -1812,13 +1791,7 @@ function AuthScreen({
   }
   return (
     <div className="auth-shell">
-      <div className="auth-brand">
-        <span className="brand-symbol">
-          <i />
-          <i />
-        </span>
-        janus
-      </div>
+      <div className="auth-brand">Janus</div>
       <section className="auth-card">
         <div className="eyebrow">YOUR OPERATIONAL WORKSPACE</div>
         <h1>Welcome back.</h1>
@@ -2202,6 +2175,7 @@ function ConnectorDrawer({
 }
 
 function CaseTable({
+  organizations,
   items,
   query,
   caseFilter,
@@ -2209,6 +2183,7 @@ function CaseTable({
   openCase,
   setNewCase,
 }: {
+  organizations: PlatformState["organizations"];
   items: SupportCase[];
   query: string;
   caseFilter: string;
@@ -2237,14 +2212,22 @@ function CaseTable({
               <span className={`severity ${item.severity.toLowerCase()}`}>
                 {item.severity}
               </span>{" "}
-              JAN-{shortID(item.id)}
+              {shortID(item.id)}
             </span>
             <strong>{item.title}</strong>
           </span>
           <Status value={item.status} />
           <span className="table-participants">
-            <span className="mini-avatar">N</span>
-            <span className="mini-avatar vendor">C</span>
+            <span className="mini-avatar">
+              {organizations
+                .find((organization) => organization.id === item.customerId)
+                ?.name.slice(0, 1)}
+            </span>
+            <span className="mini-avatar vendor">
+              {organizations
+                .find((organization) => organization.id === item.vendorId)
+                ?.name.slice(0, 1)}
+            </span>
             <span>2 organizations</span>
           </span>
           <span className="muted">{time(item.updatedAt)}</span>

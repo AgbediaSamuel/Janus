@@ -49,9 +49,6 @@ importers:
       langsmith:
         specifier: ^0.9.0
         version: 0.9.0(openai@7.47.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.22.1)(zod@4.6.7))(ws@8.22.1)
-      lucide-react:
-        specifier: ^0.468.0
-        version: 0.468.0(react@19.3.1)
       pg:
         specifier: ^8.0.0
         version: 8.23.1
@@ -3188,14 +3185,6 @@ packages:
         integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==,
       }
 
-  lucide-react@0.468.0:
-    resolution:
-      {
-        integrity: sha512-6koYRhnM2N0GGZIdXzSeiNwguv1gt/FAjZOiPl76roBi3xKEXa4WmfpxgQwTTL4KipXjefrnf3oV4IsYhi4JFA==,
-      }
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
-
   lucide-react@1.66.0:
     resolution:
       {
@@ -6288,10 +6277,6 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
-
-  lucide-react@0.468.0(react@19.3.1):
-    dependencies:
-      react: 19.3.1
 
   lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:

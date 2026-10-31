@@ -14,7 +14,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the Vite URL printed in the terminal, normally `http://127.0.0.1:5173`. The API listens on `127.0.0.1:4318`.
+Open the public landing page at the Vite URL, normally `http://127.0.0.1:5173`, then choose **Open Janus** to enter `/app`. The local sample workspace needs no login. The API listens on `127.0.0.1:4318`.
 
 With no credentials, the app runs a clearly labeled guided incident replay. Start a case, advance the investigation, switch to the vendor organization, approve or reject the action, and verify the result. This replay is a fixture, not an AI investigation or a live cloud outage. Its state persists in `.janus/`; connector credentials entered in demo mode remain in server memory only and must be entered again after restart.
 
@@ -31,6 +31,8 @@ Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. 
 ## Connect the accounts
 
 Ekene's provider-by-provider setup and scope checklist is in [docs/connectors.md](docs/connectors.md). Each catalog item has executable operations, input validation, credential fields, and documentation links. Account creation, token issuance, production permissions, and live provider validation are intentionally left to the operators.
+
+Monitoring bridges can submit authenticated alerts to `POST /api/signals`. Janus opens one case per source incident, keeps the raw alert private, and schedules an investigation when the agent runtime is configured. See [the alert intake contract](docs/signals.md) for authentication, payloads, and duplicate handling.
 
 For the platform:
 
