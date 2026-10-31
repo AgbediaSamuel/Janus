@@ -18,6 +18,7 @@ import {
 } from "./investigations";
 import { executeDemo } from "./demo-service";
 import { executeFixtureConnection } from "./fixture-connections";
+import { configuredRelayTokens, sendRelayMessage } from "./runtime/relay";
 import { SignalService, signalInput } from "./signals";
 
 const object = z.record(z.string(), z.unknown());
@@ -25,12 +26,16 @@ const orgInput = z.string().trim().min(1);
 
 export async function createApp(
   store = new Store(),
-  options: { investigatorFactory?: InvestigatorFactory } = {},
+  options: {
+    investigatorFactory?: InvestigatorFactory;
+    relaySender?: typeof sendRelayMessage;
+  } = {},
 ) {
   await store.initialize();
   const investigations = new InvestigationService(
     store,
     options.investigatorFactory,
+    options.relaySender,
   );
   const agentsAvailable = () =>
     Boolean(
@@ -113,7 +118,8 @@ export async function createApp(
     input: Record<string, unknown>,
   ) {
     const connection = await connectionFor(organizationId, connectorId);
-    if (connection.mode === "simulation") return executeFixtureConnection(store, connection, operationId, input);
+    if (connection.mode === "simulation")
+      return executeFixtureConnection(store, connection, operationId, input);
     const credentials = await store.getCredentials(connection);
     return executeConnector({ connectorId, operationId, input, credentials });
   }
@@ -253,7 +259,10 @@ export async function createApp(
         "Live cases require a title, customerId, and vendorId",
       );
     if (input.startInvestigation && !agentsAvailable())
-      throw new HttpError(503, "Set OPENAI_API_KEY, OPENAI_MODEL, and DATABASE_URL to run Deep Agents");
+      throw new HttpError(
+        503,
+        "Set OPENAI_API_KEY, OPENAI_MODEL, and DATABASE_URL to run Deep Agents",
+      );
     const item = newCase({ ...input, live: liveMode });
     const organizationId = input.organizationId || item.customerId;
     requireOrganization(res, organizationId);
@@ -262,14 +271,28 @@ export async function createApp(
     if (item.customerId === item.vendorId)
       throw new HttpError(400, "Choose two different organizations");
     const organizations = await store.organizations();
-    if (!organizations.some((org) => org.id === item.customerId && org.role === "Customer"))
+    if (
+      !organizations.some(
+        (org) => org.id === item.customerId && org.role === "Customer",
+      )
+    )
       throw new HttpError(400, "Customer organization not found");
-    if (!organizations.some((org) => org.id === item.vendorId && org.role === "Vendor"))
+    if (
+      !organizations.some(
+        (org) => org.id === item.vendorId && org.role === "Vendor",
+      )
+    )
       throw new HttpError(400, "Vendor organization not found");
     await store.createCase(item);
     if (input.startInvestigation)
-      await investigations.enqueue(item.id, organizationId, "Investigate this case. Gather evidence, coordinate with the partner when needed, and verify any recovery.");
-    res.status(201).json(projectCase((await store.getCase(item.id))!, organizationId));
+      await investigations.enqueue(
+        item.id,
+        organizationId,
+        "Investigate this case. Gather evidence, coordinate with the partner when needed, and verify any recovery.",
+      );
+    res
+      .status(201)
+      .json(projectCase((await store.getCase(item.id))!, organizationId));
   });
 
   app.post("/api/cases/:id/advance", async (req, res) => {
@@ -281,7 +304,7 @@ export async function createApp(
       req.body?.organizationId,
     );
     const updated = await store.updateCase(String(req.params.id), (item) => {
-      if (item.runs?.length)
+      if (item.runs?.some((run) => run.kind !== "conversation"))
         throw new HttpError(
           409,
           "Guided replay cannot advance an agent-driven case",
@@ -391,15 +414,68 @@ export async function createApp(
   });
 
   app.post("/api/cases/:id/messages", async (req, res) => {
-    const input = z.object({ organizationId: orgInput, text: z.string().trim().min(1) }).strict().parse(req.body);
-    const { item, organizationId } = await accessibleCase(String(req.params.id), res, input.organizationId);
-    if (item.step > 0)
-      throw new HttpError(409, "Create a fresh case to chat with an agent; this case already uses the guided replay");
+    const input = z
+      .object({
+        organizationId: orgInput,
+        text: z.string().trim().min(1),
+        target: z.enum(["agent", "case"]).default("agent"),
+        recipientOrganizationId: orgInput.optional(),
+      })
+      .strict()
+      .parse(req.body);
+    const { item, organizationId } = await accessibleCase(
+      String(req.params.id),
+      res,
+      input.organizationId,
+    );
+    if (input.target === "case" && input.recipientOrganizationId)
+      throw new HttpError(400, "Case messages do not select one recipient");
+    const recipient = input.recipientOrganizationId || organizationId;
+    if (![item.customerId, item.vendorId].includes(recipient))
+      throw new HttpError(403, "Recipient is not a case participant");
     if (!agentsAvailable())
-      throw new HttpError(503, "Set OPENAI_API_KEY, OPENAI_MODEL, and DATABASE_URL to run Deep Agents");
-    const organization = (await store.organizations()).find((entry) => entry.id === organizationId);
-    await investigations.enqueueHuman(item.id, organizationId, input.text, `${organization?.name || organizationId} team`);
-    res.status(202).json({ queued: true, case: projectCase((await store.getCase(item.id))!, organizationId) });
+      throw new HttpError(
+        503,
+        "Set OPENAI_API_KEY, OPENAI_MODEL, and DATABASE_URL to run Deep Agents",
+      );
+    const partnerId =
+      organizationId === item.customerId ? item.vendorId : item.customerId;
+    if (
+      (input.target === "case" || recipient !== organizationId) &&
+      !options.relaySender
+    ) {
+      const tokens = configuredRelayTokens();
+      if (
+        !process.env.RELAY_WORKSPACE_KEY ||
+        !tokens[organizationId] ||
+        !tokens[partnerId]
+      )
+        throw new HttpError(
+          503,
+          "Configure Agent Relay for both case participants before sending a shared message",
+        );
+    }
+    const organization = (await store.organizations()).find(
+      (entry) => entry.id === organizationId,
+    );
+    const identity = res.locals.identity as Identity;
+    await investigations.enqueueHuman(
+      item.id,
+      organizationId,
+      input.text,
+      identity.displayName || `${organization?.name || organizationId} team`,
+      {
+        target: input.target,
+        recipientOrganizationId: input.recipientOrganizationId,
+        actorId: identity.userId,
+      },
+    );
+    res
+      .status(202)
+      .json({
+        queued: true,
+        case: projectCase((await store.getCase(item.id))!, organizationId),
+      });
   });
 
   app.post("/api/cases/:id/investigate", async (req, res) => {
@@ -449,17 +525,32 @@ export async function createApp(
       throw new HttpError(403, "Reset is available only to the local demo");
     const loopback = ["127.0.0.1", "::1", "::ffff:127.0.0.1"];
     if (!loopback.includes(req.socket.remoteAddress || ""))
-      throw new HttpError(403, "Reset is available only from the local computer");
+      throw new HttpError(
+        403,
+        "Reset is available only from the local computer",
+      );
     if (req.headers.origin) {
       let origin: URL;
-      try { origin = new URL(req.headers.origin); }
-      catch { throw new HttpError(403, "Reset requires a local origin"); }
+      try {
+        origin = new URL(req.headers.origin);
+      } catch {
+        throw new HttpError(403, "Reset requires a local origin");
+      }
       if (!["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname))
         throw new HttpError(403, "Reset requires a local origin");
     }
-    z.object({ confirm: z.literal(true) }).strict().parse(req.body);
-    if ((await store.listCases()).some((item) => item.runs?.some((run) => ["pending", "running"].includes(run.status))))
-      throw new HttpError(409, "Wait for pending investigations to finish before resetting the demo");
+    z.object({ confirm: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    if (
+      (await store.listCases()).some((item) =>
+        item.runs?.some((run) => ["pending", "running"].includes(run.status)),
+      )
+    )
+      throw new HttpError(
+        409,
+        "Wait for pending investigations to finish before resetting the demo",
+      );
     await store.reset();
     res.json({ ok: true });
   });

@@ -216,7 +216,12 @@ export default function App({ route }: { route: WorkspaceRoute }) {
       generation === authenticationGeneration.current
     ) {
       setState(next);
-      setError((current) => current === "The Janus server did not respond. Refresh the workspace to check the latest case state." ? "" : current);
+      setError((current) =>
+        current ===
+        "The Janus server did not respond. Refresh the workspace to check the latest case state."
+          ? ""
+          : current,
+      );
       initialized.current = true;
     }
   }, []);
@@ -245,17 +250,25 @@ export default function App({ route }: { route: WorkspaceRoute }) {
     window.addEventListener("janus:auth-required", required);
     return () => window.removeEventListener("janus:auth-required", required);
   }, []);
-  const hasActiveCase = state?.cases.some((item) =>
-    ["investigating", "verifying", "awaiting_approval"].includes(item.status),
-  );
+  const shouldPoll =
+    state?.cases.some(
+      (item) =>
+        ["investigating", "verifying", "awaiting_approval"].includes(
+          item.status,
+        ) ||
+        item.runs?.some(
+          (run) => run.status === "pending" || run.status === "running",
+        ),
+    ) ||
+    (view === "cases" && !!selectedCaseId && caseTab === "conversation");
   useEffect(() => {
-    if (!hasActiveCase) return;
+    if (!shouldPoll) return;
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible")
         refresh().catch((reason) => setError(reason.message));
     }, 3000);
     return () => window.clearInterval(interval);
-  }, [hasActiveCase, refresh]);
+  }, [shouldPoll, refresh]);
   useEffect(() => {
     const onFocus = () => {
       refresh().catch((reason) => setError(reason.message));
@@ -846,7 +859,12 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                 <section className="empty-state">
                   <h2>Case unavailable</h2>
                   <p>This case is not available in your workspace.</p>
-                  <button className="button secondary" onClick={() => navigate("cases")}>Back to cases</button>
+                  <button
+                    className="button secondary"
+                    onClick={() => navigate("cases")}
+                  >
+                    Back to cases
+                  </button>
                 </section>
               )}
 
@@ -871,11 +889,17 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                       </span>
                       <Status
                         value={selected.status}
-                        label={selected.status === "awaiting_approval"
-                          ? selected.approvals.some((approval) => approval.status === "pending" && approval.organizationId === organizationId)
-                            ? "Your approval needed"
-                            : `${counterpartName} approval`
-                          : undefined}
+                        label={
+                          selected.status === "awaiting_approval"
+                            ? selected.approvals.some(
+                                (approval) =>
+                                  approval.status === "pending" &&
+                                  approval.organizationId === organizationId,
+                              )
+                              ? "Your approval needed"
+                              : `${counterpartName} approval`
+                            : undefined
+                        }
                       />
                     </div>
                     <h1>{selected.title}</h1>
@@ -891,35 +915,37 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                         at {time(selected.createdAt)}
                       </span>
                       <div className="button-row">
-                        {!isFinished(selected) && selected.status !== "awaiting_approval" && (selected.step > 0 || !selected.runs?.length) && (
-                          <button
-                            className="button primary"
-                            disabled={
-                              !!busy ||
-                              ((selected.mode !== "simulation" ||
-                                !!selected.runs?.length) &&
-                                !runtime?.agentsConfigured)
-                            }
-                            onClick={() => {
-                              const guided =
-                                selected.mode === "simulation" &&
-                                !selected.runs?.length;
-                              void act("investigate", () =>
-                                api(
-                                  `/api/cases/${selected.id}/${guided ? "advance" : "investigate"}`,
-                                  { organizationId },
-                                ),
-                              );
-                            }}
-                          >
-                            {busy === "investigate" ? (
-                              <Loader2 size={15} className="spin" />
-                            ) : (
-                              <ArrowRight size={15} />
-                            )}
-                            Continue investigation
-                          </button>
-                        )}
+                        {!isFinished(selected) &&
+                          selected.status !== "awaiting_approval" &&
+                          (selected.step > 0 || !selected.runs?.length) && (
+                            <button
+                              className="button primary"
+                              disabled={
+                                !!busy ||
+                                ((selected.mode !== "simulation" ||
+                                  !!selected.runs?.length) &&
+                                  !runtime?.agentsConfigured)
+                              }
+                              onClick={() => {
+                                const guided =
+                                  selected.mode === "simulation" &&
+                                  !selected.runs?.length;
+                                void act("investigate", () =>
+                                  api(
+                                    `/api/cases/${selected.id}/${guided ? "advance" : "investigate"}`,
+                                    { organizationId },
+                                  ),
+                                );
+                              }}
+                            >
+                              {busy === "investigate" ? (
+                                <Loader2 size={15} className="spin" />
+                              ) : (
+                                <ArrowRight size={15} />
+                              )}
+                              Continue investigation
+                            </button>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -957,10 +983,14 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                       organizationId={organizationId}
                     />
                   </details>
-                  <div className="case-layout">
+                  <div
+                    className={`case-layout ${caseTab === "conversation" ? "conversation-layout" : ""}`}
+                  >
                     <section className="case-main">
                       <div className="case-tabs">
-                        {(["conversation", "activity", "evidence"] as const).map((tab) => (
+                        {(
+                          ["conversation", "activity", "evidence"] as const
+                        ).map((tab) => (
                           <button
                             className={caseTab === tab ? "selected" : ""}
                             key={tab}
@@ -973,7 +1003,11 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                             ) : (
                               <MessageSquare size={15} />
                             )}
-                            {tab === "conversation" ? "Conversation" : tab === "activity" ? "Timeline" : "Evidence"}
+                            {tab === "conversation"
+                              ? "Conversation"
+                              : tab === "activity"
+                                ? "Timeline"
+                                : "Evidence"}
                             {tab === "evidence" && (
                               <span className="count-pill">
                                 {
@@ -1015,8 +1049,13 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                           organizations={state.organizations}
                           organizationId={organizationId}
                           onEvidence={setEvidence}
-                          onSend={async (text) => {
-                            await api(`/api/cases/${selected.id}/messages`, { organizationId, text });
+                          agentsConfigured={Boolean(runtime?.agentsConfigured)}
+                          onSend={async (text, destination) => {
+                            await api(`/api/cases/${selected.id}/messages`, {
+                              organizationId,
+                              text,
+                              ...destination,
+                            });
                             await refresh();
                           }}
                         />
@@ -1091,38 +1130,40 @@ export default function App({ route }: { route: WorkspaceRoute }) {
                         </div>
                       )}
                     </section>
-                    <aside className="case-aside">
-                      <div className="detail-block">
-                        <h3>Participants</h3>
-                        {state.organizations
-                          .filter((item) =>
-                            [selected.customerId, selected.vendorId].includes(
-                              item.id,
-                            ),
-                          )
-                          .map((item) => (
-                            <div className="participant" key={item.id}>
-                              <span
-                                className={`organization-avatar ${item.id === selected.vendorId ? "vendor" : ""}`}
-                              >
-                                <OrganizationLogo
-                                  id={item.id}
-                                  name={item.name}
-                                />
-                              </span>
-                              <div>
-                                <strong>{item.name}</strong>
-                                <span>
-                                  {item.agentName} · {item.role}
+                    {caseTab !== "conversation" && (
+                      <aside className="case-aside">
+                        <div className="detail-block">
+                          <h3>Participants</h3>
+                          {state.organizations
+                            .filter((item) =>
+                              [selected.customerId, selected.vendorId].includes(
+                                item.id,
+                              ),
+                            )
+                            .map((item) => (
+                              <div className="participant" key={item.id}>
+                                <span
+                                  className={`organization-avatar ${item.id === selected.vendorId ? "vendor" : ""}`}
+                                >
+                                  <OrganizationLogo
+                                    id={item.id}
+                                    name={item.name}
+                                  />
                                 </span>
+                                <div>
+                                  <strong>{item.name}</strong>
+                                  <span>
+                                    {item.agentName} · {item.role}
+                                  </span>
+                                </div>
+                                {item.id === organizationId && (
+                                  <span className="you-label">YOU</span>
+                                )}
                               </div>
-                              {item.id === organizationId && (
-                                <span className="you-label">YOU</span>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    </aside>
+                            ))}
+                        </div>
+                      </aside>
+                    )}
                   </div>
                 </>
               )}

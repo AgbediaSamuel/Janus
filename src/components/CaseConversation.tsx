@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Clock3,
   FileText,
+  Globe2,
   Loader2,
   LockKeyhole,
   MessageSquare,
@@ -14,12 +15,18 @@ import {
 import ProviderLogo from "./ProviderLogo";
 import "./CaseConversation.css";
 
+export interface ConversationDestination {
+  target: "agent" | "case";
+  recipientOrganizationId?: string;
+}
+
 interface CaseConversationProps {
   supportCase: SupportCase;
   organizations: Organization[];
   organizationId: string;
   onEvidence: (evidence: Evidence) => void;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, destination: ConversationDestination) => Promise<void>;
+  agentsConfigured?: boolean;
   busy?: boolean;
 }
 
@@ -60,11 +67,15 @@ export default function CaseConversation({
   onEvidence,
   onSend,
   busy = false,
+  agentsConfigured = false,
 }: CaseConversationProps) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [recipient, setRecipient] = useState<"own" | "counterpart" | "case">(
+    "own",
+  );
   const scope = `${organizationId}:${supportCase.id}`;
   const transcriptRef = useRef<HTMLOListElement>(null);
   const followLatest = useRef(true);
@@ -75,6 +86,7 @@ export default function CaseConversation({
     setError("");
     setSent(false);
     setSending(false);
+    setRecipient("own");
     followLatest.current = true;
   }, [scope]);
   const organization = organizations.find((item) => item.id === organizationId);
@@ -100,8 +112,37 @@ export default function CaseConversation({
       run.organizationId === organizationId &&
       ["pending", "running"].includes(run.status),
   );
-  const readOnly = supportCase.step > 0;
+  const readOnly = !agentsConfigured;
   const locked = busy || sending || readOnly;
+  const participantAgents = organizations.filter((item) =>
+    [supportCase.customerId, supportCase.vendorId].includes(item.id),
+  );
+  const humanParticipants = [
+    ...new Map(
+      messages
+        .filter((message) => message.actorType === "human")
+        .map((message) => [
+          `${message.organizationId}:${message.actorId || message.actor}`,
+          message,
+        ]),
+    ).values(),
+  ];
+  const privateMessage = recipient === "own";
+  const destination: ConversationDestination =
+    recipient === "case"
+      ? { target: "case" }
+      : {
+          target: "agent",
+          recipientOrganizationId: privateMessage
+            ? organizationId
+            : counterpartId,
+        };
+  const recipientLabel =
+    recipient === "case"
+      ? "everyone in this case"
+      : privateMessage
+        ? organization?.agentName || "your agent"
+        : counterpart?.agentName || "the counterpart agent";
   const latestMessageId = messages.at(-1)?.id;
   useEffect(() => {
     if (transcriptRef.current && followLatest.current)
@@ -118,7 +159,7 @@ export default function CaseConversation({
     setError("");
     setSent(false);
     try {
-      await onSend(text);
+      await onSend(text, destination);
       if (scopeRef.current === submittedScope) {
         setDraft("");
         setSent(true);
@@ -153,6 +194,53 @@ export default function CaseConversation({
           {messages.length} {messages.length === 1 ? "message" : "messages"}
         </span>
       </div>
+      <details className="conversation-participants">
+        <summary>
+          <span className="conversation-participant-marks">
+            {participantAgents.map((item) => (
+              <span key={item.id} title={item.name}>
+                <ProviderLogo connectorId={item.id} size={17} />
+              </span>
+            ))}
+          </span>
+          <span>
+            {participantAgents.length + humanParticipants.length} participants
+          </span>
+          <ChevronDown size={12} />
+        </summary>
+        <div className="conversation-participant-list">
+          {participantAgents.map((item) => (
+            <div className="conversation-participant" key={item.id}>
+              <span className="conversation-roster-mark">
+                <ProviderLogo connectorId={item.id} size={21} />
+              </span>
+              <div>
+                <strong>{item.agentName}</strong>
+                <span>{item.name} · Agent</span>
+              </div>
+            </div>
+          ))}
+          {humanParticipants.map((person) => (
+            <div
+              className="conversation-participant"
+              key={`${person.organizationId}:${person.actorId || person.actor}`}
+            >
+              <span className="conversation-roster-mark">
+                <MessageSource event={person} />
+              </span>
+              <div>
+                <strong>{person.actor}</strong>
+                <span>
+                  {organizations.find(
+                    (item) => item.id === person.organizationId,
+                  )?.name || "Case participant"}{" "}
+                  · Team member
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
       <ol
         className="conversation-messages"
         aria-label="Case messages"
@@ -226,6 +314,13 @@ export default function CaseConversation({
                   </div>
                   <div className="conversation-message-meta">
                     {source && <span>{source}</span>}
+                    {message.target && (
+                      <span>
+                        {message.target === "case"
+                          ? "To everyone in this case"
+                          : `To ${organizations.find((item) => item.id === message.recipientOrganizationId)?.agentName || "agent"}`}
+                      </span>
+                    )}
                     <span>
                       {message.visibility === "private" && (
                         <LockKeyhole size={11} />
@@ -278,7 +373,7 @@ export default function CaseConversation({
           <Clock3 size={14} />
           <span>
             {activeRuns.some((run) => run.status === "running")
-              ? `${organization?.agentName || "Your agent"} is investigating`
+              ? `${organization?.agentName || "Your agent"} ${activeRuns.find((run) => run.status === "running")?.kind === "conversation" ? "is preparing a reply" : "is investigating"}`
               : `${organization?.agentName || "Your agent"} has a queued turn`}
             {activeRuns.length > 1
               ? ` · ${activeRuns.length} active turns`
@@ -287,12 +382,37 @@ export default function CaseConversation({
         </div>
       )}
       <form className="conversation-composer" onSubmit={send}>
-        <label htmlFor={`message-agent-${supportCase.id}`}>
-          Message your agent
-        </label>
+        <div className="conversation-composer-heading">
+          <label htmlFor={`message-agent-${supportCase.id}`}>Message</label>
+          <div className="conversation-recipient">
+            <label htmlFor={`message-recipient-${supportCase.id}`}>To</label>
+            <select
+              id={`message-recipient-${supportCase.id}`}
+              aria-label="Message recipient"
+              value={recipient}
+              disabled={locked}
+              onChange={(event) => {
+                setRecipient(
+                  event.target.value as "own" | "counterpart" | "case",
+                );
+                setSent(false);
+                setError("");
+              }}
+            >
+              <option value="own">
+                {organization?.agentName || "Your agent"} · private
+              </option>
+              <option value="counterpart">
+                {counterpart?.agentName || "Counterpart agent"} · shared
+              </option>
+              <option value="case">Everyone in this case · shared</option>
+            </select>
+            <ChevronDown size={12} />
+          </div>
+        </div>
         {readOnly && (
           <p className="conversation-read-only">
-            Start a new case to message your agent.
+            Agent messaging is not configured.
           </p>
         )}
         <textarea
@@ -305,13 +425,15 @@ export default function CaseConversation({
           }}
           onKeyDown={composerKeyDown}
           rows={3}
-          placeholder="Add context or ask a question…"
+          placeholder={`Message ${recipientLabel}…`}
           aria-describedby={`message-privacy-${supportCase.id}`}
         />
         <div className="conversation-composer-footer">
           <span id={`message-privacy-${supportCase.id}`}>
-            <LockKeyhole size={12} />
-            Only {organization?.name || "your organization"}
+            {privateMessage ? <LockKeyhole size={12} /> : <Globe2 size={12} />}
+            {privateMessage
+              ? `Only ${organization?.name || "your organization"}`
+              : `Shared with ${organization?.name || "your organization"} and ${counterpart?.name || "counterpart"}`}
           </span>
           <button type="submit" disabled={locked || !draft.trim()}>
             {sending ? (

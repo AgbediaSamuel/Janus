@@ -77,6 +77,9 @@ export interface CaseEvent {
     | "system";
   organizationId?: OrganizationID;
   actor: string;
+  actorId?: string;
+  target?: "agent" | "case";
+  recipientOrganizationId?: string;
   channel?: string;
   actorType?: "agent" | "human" | "system";
   evidenceIds?: string[];
@@ -121,7 +124,11 @@ export interface SupportCase {
   approvals: Approval[];
   outcome?: string;
   demoService?: {
-    scenario?: "aws-uploads" | "google-indexing" | "ramp-attachments" | "ramp-exports";
+    scenario?:
+      | "aws-uploads"
+      | "google-indexing"
+      | "ramp-attachments"
+      | "ramp-exports";
     route: "canary" | "stable";
     probes: { requestId: string; status: number; at: string }[];
   };
@@ -129,6 +136,9 @@ export interface SupportCase {
     id: string;
     organizationId: string;
     message: string;
+    kind?: "conversation" | "investigation";
+    replyVisibility?: "private" | "shared";
+    sourceEventId?: string;
     status: "pending" | "running" | "completed" | "failed";
     createdAt: string;
   }[];

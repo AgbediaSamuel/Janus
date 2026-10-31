@@ -6,6 +6,10 @@ export interface RelayCaseMessage {
   from: string;
   to: string;
   text: string;
+  actorType?: "human" | "agent";
+  actor?: string;
+  actorId?: string;
+  target?: "agent" | "case";
 }
 
 export interface ReceivedRelayMessage extends RelayCaseMessage {
@@ -15,10 +19,16 @@ export interface ReceivedRelayMessage extends RelayCaseMessage {
 }
 
 type RelayMessage = Awaited<ReturnType<RelayAgentClient["messages"]["get"]>>;
-export type RelayClient = Pick<RelayAgentClient, "id" | "handle" | "sendMessage"> & {
+export type RelayClient = Pick<
+  RelayAgentClient,
+  "id" | "handle" | "sendMessage"
+> & {
   onDirectMessage: (handler: (message: RelayMessage) => void) => () => void;
   inbox: Pick<RelayAgentClient["inbox"], "get">;
-  messages: Pick<RelayAgentClient["messages"], "listDirect" | "markRead" | "get">;
+  messages: Pick<
+    RelayAgentClient["messages"],
+    "listDirect" | "markRead" | "get"
+  >;
 };
 
 export function configuredRelayTokens(): Record<string, string> {
@@ -60,8 +70,15 @@ async function getClient(organizationId: string): Promise<RelayClient> {
     );
   let client = clients.get(organizationId);
   if (!client) {
-    const scopedRelay = new AgentRelay({ workspaceKey, agentToken: apiToken, baseUrl: process.env.RELAY_BASE_URL || undefined });
-    const recipientReader = new AgentRelay({ agentToken: apiToken, baseUrl: process.env.RELAY_BASE_URL || undefined });
+    const scopedRelay = new AgentRelay({
+      workspaceKey,
+      agentToken: apiToken,
+      baseUrl: process.env.RELAY_BASE_URL || undefined,
+    });
+    const recipientReader = new AgentRelay({
+      agentToken: apiToken,
+      baseUrl: process.env.RELAY_BASE_URL || undefined,
+    });
     client = scopedRelay.workspace.reconnect({ apiToken }).then((agent) => ({
       ...agent,
       messages: {
@@ -69,7 +86,10 @@ async function getClient(organizationId: string): Promise<RelayClient> {
         listDirect: (input) => agent.messages.listDirect(input),
         markRead: (messageId: string) => agent.messages.markRead(messageId),
       },
-      onDirectMessage: (handler: (message: RelayMessage) => void) => scopedRelay.addListener("dm.received", (event) => handler(event.message)),
+      onDirectMessage: (handler: (message: RelayMessage) => void) =>
+        scopedRelay.addListener("dm.received", (event) =>
+          handler(event.message),
+        ),
     }));
     clients.set(organizationId, client);
   }
@@ -122,6 +142,11 @@ export function createRelayTransport(
       messageId: message.messageId,
       deliveryId: message.messageId,
       createdAt: message.createdAt,
+      actorType: metadata.actorType === "human" ? "human" : "agent",
+      actor: typeof metadata.actor === "string" ? metadata.actor : undefined,
+      actorId:
+        typeof metadata.actorId === "string" ? metadata.actorId : undefined,
+      target: metadata.target === "case" ? "case" : "agent",
     };
   }
 
@@ -133,9 +158,11 @@ export function createRelayTransport(
     partnerId: string,
   ) {
     if (raw.from.id !== partner.id || !raw.messageId) return null;
-    const message = typeof raw.metadata?.caseId === "string" && typeof raw.metadata?.eventId === "string"
-      ? raw
-      : await recipient.messages.get(raw.messageId);
+    const message =
+      typeof raw.metadata?.caseId === "string" &&
+      typeof raw.metadata?.eventId === "string"
+        ? raw
+        : await recipient.messages.get(raw.messageId);
     if (message.messageId !== raw.messageId) return null;
     return decode(message, recipient, partner, organizationId, partnerId);
   }
@@ -149,9 +176,18 @@ export function createRelayTransport(
   ) {
     const inbox = await recipient.inbox.get();
     for (const conversation of inbox.unreadDms) {
-      const messages = await recipient.messages.listDirect({ conversationId: conversation.conversationId, limit: conversation.unreadCount });
+      const messages = await recipient.messages.listDirect({
+        conversationId: conversation.conversationId,
+        limit: conversation.unreadCount,
+      });
       for (const raw of [...messages].reverse()) {
-        const message = await decodeIncoming(raw, recipient, partner, organizationId, partnerId);
+        const message = await decodeIncoming(
+          raw,
+          recipient,
+          partner,
+          organizationId,
+          partnerId,
+        );
         if (!message || !(await onMessage(message))) continue;
         await recipient.messages.markRead(message.messageId);
       }
@@ -176,6 +212,10 @@ export function createRelayTransport(
           caseId: input.caseId,
           eventId: input.eventId,
           organizationId: input.from,
+          actorType: input.actorType || "agent",
+          actor: input.actor,
+          actorId: input.actorId,
+          target: input.target || "agent",
         },
       });
       return { messageId: message.messageId, createdAt: message.createdAt };
@@ -186,14 +226,23 @@ export function createRelayTransport(
       caseId: string;
       onMessage: (message: ReceivedRelayMessage) => Promise<void>;
     }) {
-      const { recipient, partner } = await identities(input.organizationId, input.partnerId);
+      const { recipient, partner } = await identities(
+        input.organizationId,
+        input.partnerId,
+      );
       const received: ReceivedRelayMessage[] = [];
-      await replayUnread(recipient, partner, input.organizationId, input.partnerId, async (message) => {
-        if (message.caseId !== input.caseId) return false;
-        await input.onMessage(message);
-        received.push(message);
-        return true;
-      });
+      await replayUnread(
+        recipient,
+        partner,
+        input.organizationId,
+        input.partnerId,
+        async (message) => {
+          if (message.caseId !== input.caseId) return false;
+          await input.onMessage(message);
+          received.push(message);
+          return true;
+        },
+      );
       return received;
     },
     async subscribe(input: {
@@ -203,15 +252,30 @@ export function createRelayTransport(
       onMessage: (message: ReceivedRelayMessage) => Promise<void>;
     }) {
       if (input.signal?.aborted) return;
-      const { recipient, partner } = await identities(input.organizationId, input.partnerId);
+      const { recipient, partner } = await identities(
+        input.organizationId,
+        input.partnerId,
+      );
       let queue = Promise.resolve();
       let stop!: () => void;
       let fail!: (error: unknown) => void;
-      const stopped = new Promise<void>((resolve, reject) => { stop = resolve; fail = reject; });
-      const handle = async (message: ReceivedRelayMessage) => { await input.onMessage(message); return true; };
+      const stopped = new Promise<void>((resolve, reject) => {
+        stop = resolve;
+        fail = reject;
+      });
+      const handle = async (message: ReceivedRelayMessage) => {
+        await input.onMessage(message);
+        return true;
+      };
       const unsubscribe = recipient.onDirectMessage((received) => {
         queue = queue.then(async () => {
-          const message = await decodeIncoming(received, recipient, partner, input.organizationId, input.partnerId);
+          const message = await decodeIncoming(
+            received,
+            recipient,
+            partner,
+            input.organizationId,
+            input.partnerId,
+          );
           if (!message) return;
           await input.onMessage(message);
           await recipient.messages.markRead(message.messageId);
@@ -219,12 +283,25 @@ export function createRelayTransport(
         void queue.catch(fail);
       });
       input.signal?.addEventListener("abort", stop, { once: true });
-      void replayUnread(recipient, partner, input.organizationId, input.partnerId, handle).catch(() => {
-        console.warn("Relay unread-message replay failed; live direct-message listening remains active. Restart to retry unread history.");
+      void replayUnread(
+        recipient,
+        partner,
+        input.organizationId,
+        input.partnerId,
+        handle,
+      ).catch(() => {
+        console.warn(
+          "Relay unread-message replay failed; live direct-message listening remains active. Restart to retry unread history.",
+        );
       });
       if (input.signal?.aborted) stop();
-      try { await stopped; await queue; }
-      finally { unsubscribe(); input.signal?.removeEventListener("abort", stop); }
+      try {
+        await stopped;
+        await queue;
+      } finally {
+        unsubscribe();
+        input.signal?.removeEventListener("abort", stop);
+      }
     },
   };
 }

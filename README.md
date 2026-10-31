@@ -35,7 +35,7 @@ To use actual Terse persistence locally, run `pnpm dev:actors` in a second termi
 
 The same case has an executable local service fixture. An attachment upload returns HTTP 503 while its tenant points to an unhealthy route and returns HTTP 200 after the vendor's approved rollback. The indexing scenario similarly restores a compatible consumer and drains the local backlog after customer approval. Agents have separate customer traces/probes and vendor rollout tools; the customer cannot inspect vendor configuration directly.
 
-Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. Configure separate customer/vendor Agent Relay identities for actual cross-company messages. Start a fresh demo case and open **Investigation details → Use connected agents** before advancing the guided case. Freestyle tools become available when `FREESTYLE_API_KEY` is set. All local fixture evidence retains `simulated: true` in the API, even when a real model investigates it.
+Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `DATABASE_URL` for Deep Agents. Configure separate customer/vendor Agent Relay identities for actual cross-company messages. Creating a fresh case starts the configured investigator automatically; open **Conversation** to follow its progress and add human messages. Freestyle tools become available when `FREESTYLE_API_KEY` is set. All local fixture evidence retains `simulated: true` in the API, even when a real model investigates it.
 
 `POST /api/demo/service/:caseId/checkout` exercises the fixture directly. Real Luna inference has passed the bounded `pnpm smoke:agent` experiment. The full bilateral investigation still requires PostgreSQL and Relay credentials; see [the demo guide](docs/demo.md).
 
@@ -72,7 +72,7 @@ insert into public.organization_members (organization_id, user_id) values
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Terse                   | Authoritative live case state, evidence, pending runs, approvals, and event receipts                       |
 | Deep Agents / LangGraph | Each organization's reasoning, scoped tools, private working context, and persistent execution checkpoints |
-| Agent Relay             | Authenticated partner messages; incoming deliveries are persisted before acknowledgement                   |
+| Agent Relay             | Authenticated partner messages; Janus marks messages read after persistence; the SDK acknowledges transport delivery automatically |
 | Supabase                | Auth, organization membership, case index, and encrypted connector configuration                           |
 | Freestyle               | Organization-and-case-scoped reproduction VMs; production credentials are not copied into them             |
 | React console           | Cases, evidence, timeline, integration configuration, and action review                                    |

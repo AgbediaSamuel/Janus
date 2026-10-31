@@ -80,7 +80,7 @@ export function createInvestigationTools(
     tool(() => callbacks.receivePartnerMessages(), {
       name: "receive_partner_messages",
       description:
-        "Receive currently available partner messages for this case through Agent Relay. If none are available, stop and wait for a subsequent turn; do not repeatedly poll.",
+        "Read partner messages already delivered by authenticated Agent Relay and persisted in this case. This reads the case record without requesting the provider inbox. If none are available, stop and wait for a subsequent turn; do not repeatedly poll.",
       schema: z.object({}),
     }),
   ];

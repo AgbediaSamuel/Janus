@@ -8,7 +8,6 @@ import { demoDefinitions, executeDemo } from "./demo-service";
 import { executeFixtureConnection } from "./fixture-connections";
 import {
   configuredRelayTokens,
-  receiveRelayMessages,
   sendRelayMessage,
   subscribeRelayMessages,
   type ReceivedRelayMessage,
@@ -24,46 +23,144 @@ export class InvestigationService {
   constructor(
     private store: Store,
     private investigatorFactory: InvestigatorFactory = createInvestigator,
+    private relaySender: typeof sendRelayMessage = sendRelayMessage,
   ) {}
 
   async enqueue(caseId: string, organizationId: string, message: string) {
     await this.queueTurn(caseId, organizationId, message);
   }
 
-  async enqueueHuman(caseId: string, organizationId: string, text: string, actor: string) {
-    await this.queueTurn(caseId, organizationId, text, actor);
+  async enqueueHuman(
+    caseId: string,
+    organizationId: string,
+    text: string,
+    actor: string,
+    options: {
+      target?: "agent" | "case";
+      recipientOrganizationId?: string;
+      actorId?: string;
+    } = {},
+  ) {
+    const item = await this.store.getCase(caseId);
+    if (!item) throw new HttpError(404, "Case not found");
+    if (![item.customerId, item.vendorId].includes(organizationId))
+      throw new HttpError(403, "Organization is not a case participant");
+    const target = options.target || "agent";
+    const recipient = options.recipientOrganizationId || organizationId;
+    if (![item.customerId, item.vendorId].includes(recipient))
+      throw new HttpError(403, "Recipient is not a case participant");
+    if (target === "agent" && recipient === organizationId) {
+      await this.queueTurn(
+        caseId,
+        organizationId,
+        text,
+        actor,
+        options.actorId,
+      );
+      return;
+    }
+    const partnerId =
+      organizationId === item.customerId ? item.vendorId : item.customerId;
+    await this.watchCase(caseId);
+    const sent = await this.relaySender({
+      caseId,
+      eventId: randomUUID(),
+      from: organizationId,
+      to: partnerId,
+      text,
+      actorType: "human",
+      actor,
+      actorId: options.actorId,
+      target,
+    });
+    const sourceEventId = `relay:${sent.messageId}`;
+    await this.store.updateCase(caseId, (current) => {
+      if (!current.events.some((entry) => entry.id === sourceEventId))
+        current.events.push({
+          id: sourceEventId,
+          type: "message",
+          channel: "janus",
+          actorType: "human",
+          actor,
+          actorId: options.actorId,
+          target,
+          recipientOrganizationId: target === "agent" ? partnerId : undefined,
+          organizationId,
+          title:
+            target === "case"
+              ? "Message to the case"
+              : "Message to partner agent",
+          body: text,
+          visibility: "shared",
+          createdAt: sent.createdAt || new Date().toISOString(),
+        });
+      if (target === "case") {
+        current.runs ??= [];
+        if (
+          !current.runs.some(
+            (run) =>
+              run.sourceEventId === sourceEventId &&
+              run.organizationId === organizationId,
+          )
+        )
+          current.runs.push({
+            id: randomUUID(),
+            organizationId,
+            message: text,
+            kind: current.step > 0 ? "conversation" : "investigation",
+            replyVisibility: "shared",
+            sourceEventId,
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          });
+        if (current.step === 0 && current.status !== "awaiting_approval")
+          current.status = "investigating";
+      }
+    });
+    await this.startPending(caseId);
   }
 
-  private async queueTurn(caseId: string, organizationId: string, message: string, humanActor?: string) {
+  private async queueTurn(
+    caseId: string,
+    organizationId: string,
+    message: string,
+    humanActor?: string,
+    actorId?: string,
+  ) {
     await this.store.updateCase(caseId, (item) => {
       if (![item.customerId, item.vendorId].includes(organizationId))
         throw new HttpError(403, "Organization is not a case participant");
-      if (item.step > 0)
+      if (item.step > 0 && !humanActor)
         throw new HttpError(
           409,
           "Create a fresh case for agent investigation; this case already uses the guided replay",
         );
-      if (humanActor) {
+      if (humanActor)
         event(item, {
           type: "message",
           channel: "janus",
           actorType: "human",
           organizationId,
           actor: humanActor,
+          actorId,
+          target: "agent",
+          recipientOrganizationId: organizationId,
           title: "Message to your agent",
           body: message,
           visibility: "private",
         });
-      }
       item.runs ??= [];
       item.runs.push({
         id: randomUUID(),
         organizationId,
         message,
+        kind: item.step > 0 ? "conversation" : "investigation",
+        replyVisibility: "private",
         status: "pending",
         createdAt: new Date().toISOString(),
       });
-      if (item.status !== "awaiting_approval") item.status = "investigating";
+      if (item.step === 0 && item.status !== "awaiting_approval")
+        item.status = "investigating";
     });
     await this.startPending(caseId);
   }
@@ -150,14 +247,20 @@ export class InvestigationService {
   private async drain() {
     while (true) {
       const cases = await this.store.listCases();
-      const item = cases.find(
-        (candidate) =>
-          candidate.status !== "resolved" &&
-          candidate.runs?.some((run) => run.status === "pending"),
-      );
-      const run = item?.runs?.find(
-        (candidate) => candidate.status === "pending",
-      );
+      const next = cases
+        .flatMap((item) =>
+          (item.runs || [])
+            .filter(
+              (run) =>
+                run.status === "pending" &&
+                (item.status !== "resolved" || run.kind === "conversation"),
+            )
+            .map((run) => ({ item, run })),
+        )
+        .sort(
+          (a, b) => Date.parse(a.run.createdAt) - Date.parse(b.run.createdAt),
+        )[0];
+      const { item, run } = next || {};
       if (!item || !run) return;
       await this.store.updateCase(item.id, (current) => {
         current.runs!.find((candidate) => candidate.id === run.id)!.status =
@@ -178,7 +281,7 @@ export class InvestigationService {
         await this.store.updateCase(item.id, (current) => {
           current.runs!.find((candidate) => candidate.id === run.id)!.status =
             "failed";
-          current.status = "escalated";
+          if (run.kind !== "conversation") current.status = "escalated";
           event(current, {
             type: "system",
             organizationId: run.organizationId,
@@ -202,26 +305,49 @@ export class InvestigationService {
       )
         throw new HttpError(403, "Message participants do not match the case");
       const messageKey = `relay:${message.messageId}`;
-      if (item.events.some((entry) => entry.id === messageKey)) return;
-      item.events.push({
-        id: messageKey,
-        type: "message",
-        channel: "relay",
-        actorType: "agent",
-        organizationId: message.from,
-        actor: `${message.from} → ${message.to}`,
-        title: "Partner message received",
-        body: message.text,
-        createdAt: message.createdAt || new Date().toISOString(),
-        visibility: "shared",
-      });
-      if (item.status !== "resolved") {
-        item.runs ??= [];
+      const existing = item.events.find((entry) => entry.id === messageKey);
+      if (existing && message.actorType !== "human") return;
+      if (!existing)
+        item.events.push({
+          id: messageKey,
+          type: "message",
+          channel: message.actorType === "human" ? "janus" : "relay",
+          actorType: message.actorType || "agent",
+          actor: message.actor || `${message.from} agent`,
+          actorId: message.actorId,
+          target: message.target || "agent",
+          recipientOrganizationId:
+            message.target === "case" ? undefined : message.to,
+          organizationId: message.from,
+          title:
+            message.actorType === "human"
+              ? message.target === "case"
+                ? "Message to the case"
+                : "Message to partner agent"
+              : "Partner message received",
+          body: message.text,
+          createdAt: message.createdAt || new Date().toISOString(),
+          visibility: "shared",
+        });
+      item.runs ??= [];
+      if (
+        (item.status !== "resolved" || item.step > 0) &&
+        !item.runs.some(
+          (run) =>
+            run.sourceEventId === messageKey &&
+            run.organizationId === message.to,
+        )
+      ) {
         item.runs.push({
           id: randomUUID(),
           organizationId: message.to,
           message:
-            "A partner message arrived. Read the case and respond with useful evidence or actions.",
+            message.actorType === "human"
+              ? `A person from the partner organization says: ${message.text}`
+              : "A partner message arrived. Read the case and respond with useful evidence or actions.",
+          kind: item.step > 0 ? "conversation" : "investigation",
+          replyVisibility: message.actorType === "human" ? "shared" : "private",
+          sourceEventId: messageKey,
           status: "pending",
           createdAt: new Date().toISOString(),
         });
@@ -239,6 +365,13 @@ export class InvestigationService {
   ) {
     const item = await this.store.getCase(caseId);
     if (!item) throw new HttpError(404, "Case not found");
+    const organization = (await this.store.organizations()).find(
+      (entry) => entry.id === organizationId,
+    );
+    const agentName = organization?.agentName || `${organizationId} agent`;
+    const run = item.runs?.find((entry) => entry.id === turnId);
+    const conversationOnly = run?.kind === "conversation";
+    const replyVisibility = run?.replyVisibility || "private";
     const partnerId =
       organizationId === item.customerId ? item.vendorId : item.customerId;
     const demos = demoDefinitions(item, organizationId);
@@ -265,6 +398,8 @@ export class InvestigationService {
     const investigator = await this.investigatorFactory({
       organizationId,
       caseId,
+      conversationOnly,
+      sharedReply: replyVisibility === "shared",
       tools: {
         readCase: async () => {
           const connections = (await this.store.listConnections()).filter(
@@ -286,6 +421,11 @@ export class InvestigationService {
           };
         },
         collectEvidence: async ({ connectorId, operation, input }) => {
+          if (conversationOnly)
+            throw new HttpError(
+              409,
+              "Conversational turns preserve the existing recovery workflow",
+            );
           if (operationFor(connectorId, operation).write)
             throw new HttpError(
               403,
@@ -294,7 +434,9 @@ export class InvestigationService {
           const isDemo = demos.some(
             (definition) => definition.id === connectorId,
           );
-          const connection = isDemo ? undefined : await connectionFor(connectorId);
+          const connection = isDemo
+            ? undefined
+            : await connectionFor(connectorId);
           const simulated = isDemo || connection?.mode === "simulation";
           const observedAt = new Date().toISOString();
           const result = isDemo
@@ -306,14 +448,19 @@ export class InvestigationService {
                 operation,
                 input,
               )
-            : connection?.mode === "simulation" ? await executeFixtureConnection(this.store, connection, operation, input) : await executeConnector({
-                connectorId,
-                operationId: operation,
-                input,
-                credentials: await this.store.getCredentials(
-                  connection!,
-                ),
-              });
+            : connection?.mode === "simulation"
+              ? await executeFixtureConnection(
+                  this.store,
+                  connection,
+                  operation,
+                  input,
+                )
+              : await executeConnector({
+                  connectorId,
+                  operationId: operation,
+                  input,
+                  credentials: await this.store.getCredentials(connection!),
+                });
           let receiptId = "";
           await this.store.updateCase(caseId, (current) => {
             const evidence = addEvidence(current, {
@@ -333,6 +480,11 @@ export class InvestigationService {
           return { evidenceId: receiptId, result };
         },
         addEvidence: async (evidence) => {
+          if (conversationOnly)
+            throw new HttpError(
+              409,
+              "Conversational turns preserve the existing recovery workflow",
+            );
           const updated = await this.store.updateCase(caseId, (current) => {
             addEvidence(current, {
               ...evidence,
@@ -343,10 +495,21 @@ export class InvestigationService {
           return updated.evidence.at(-1);
         },
         requestAction: async (action) => {
+          if (conversationOnly)
+            throw new HttpError(
+              409,
+              "Conversational turns preserve the existing recovery workflow",
+            );
           operationFor(action.connectorId, action.operation);
-          if (!demos.some((definition) => definition.id === action.connectorId)) {
+          if (
+            !demos.some((definition) => definition.id === action.connectorId)
+          ) {
             const connection = await connectionFor(action.connectorId);
-            if (connection.mode === "simulation") throw new HttpError(400, "Local workspace integrations are read-only. Configure provider credentials for external actions.");
+            if (connection.mode === "simulation")
+              throw new HttpError(
+                400,
+                "Local workspace integrations are read-only. Configure provider credentials for external actions.",
+              );
           }
           const requested = {
             connectorId: action.connectorId,
@@ -390,11 +553,13 @@ export class InvestigationService {
         },
         sendPartnerMessage: async ({ text }) => {
           const eventId = randomUUID();
-          const result = await sendRelayMessage({
+          const result = await this.relaySender({
             caseId,
             eventId,
             from: organizationId,
             to: partnerId,
+            actorType: "agent",
+            actor: agentName,
             text,
           });
           await this.store.updateCase(caseId, (current) => {
@@ -402,7 +567,7 @@ export class InvestigationService {
               id: `sent:${eventId}`,
               type: "message",
               organizationId,
-              actor: `${organizationId} agent`,
+              actor: agentName,
               channel: "relay",
               actorType: "agent",
               title: "Message submitted to Agent Relay",
@@ -413,14 +578,37 @@ export class InvestigationService {
           });
           return result;
         },
-        receivePartnerMessages: () =>
-          receiveRelayMessages({
-            organizationId,
-            partnerId,
-            caseId,
-            onMessage: (received) => this.acceptMessage(received),
-          }),
+        receivePartnerMessages: async () => {
+          const current = await this.store.getCase(caseId);
+          if (!current) throw new HttpError(404, "Case not found");
+          return projectCase(current, organizationId)
+            .events.filter(
+              (entry) =>
+                entry.id.startsWith("relay:") &&
+                entry.type === "message" &&
+                entry.visibility === "shared" &&
+                entry.organizationId === partnerId &&
+                (!entry.recipientOrganizationId ||
+                  entry.recipientOrganizationId === organizationId),
+            )
+            .map((entry) => ({
+              caseId,
+              messageId: entry.id.slice("relay:".length),
+              from: partnerId,
+              to: organizationId,
+              text: entry.body,
+              createdAt: entry.createdAt,
+              actorType: entry.actorType,
+              actor: entry.actor,
+              target: entry.target,
+            }));
+        },
         concludeInvestigation: async ({ status, summary, evidenceIds }) => {
+          if (conversationOnly)
+            throw new HttpError(
+              409,
+              "Conversational turns preserve the existing recovery workflow",
+            );
           const updated = await this.store.updateCase(caseId, (current) => {
             if (status === "resolved") {
               if (organizationId !== current.customerId)
@@ -507,10 +695,10 @@ export class InvestigationService {
           channel: "janus",
           actorType: "agent",
           organizationId,
-          actor: `${organizationId} agent`,
+          actor: agentName,
           title: "Agent reply",
           body: result.text,
-          visibility: "private",
+          visibility: replyVisibility,
         });
       });
     } finally {

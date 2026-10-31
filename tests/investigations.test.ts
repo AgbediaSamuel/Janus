@@ -66,7 +66,9 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
       };
       if (organizationId === "notion") {
         assert.deepEqual(
-          visible.integrations.map((item) => item.id).filter((id) => id.startsWith("demo-")),
+          visible.integrations
+            .map((item) => item.id)
+            .filter((id) => id.startsWith("demo-")),
           ["demo-customer"],
         );
         assert.deepEqual(visible.case.approvals, []);
@@ -125,7 +127,9 @@ test("agent-driven demo executes a bad probe, vendor-approved rollback, and fres
         }
       } else {
         assert.deepEqual(
-          visible.integrations.map((item) => item.id).filter((id) => id.startsWith("demo-")),
+          visible.integrations
+            .map((item) => item.id)
+            .filter((id) => id.startsWith("demo-")),
           ["demo-vendor"],
         );
         if (message.includes("approved action completed")) return;
@@ -404,80 +408,630 @@ test("human conversation commits a private message with its pending turn and rec
   const fixture = await temporaryStore();
   const observed: string[] = [];
   const app = await createApp(fixture.store, {
-    investigatorFactory: factory(async ({ organizationId, caseId }, message, turnId) => {
-      const persisted = (await fixture.store.getCase(caseId))!;
-      assert.equal(organizationId, "notion");
-      assert.equal(message, "Check the private upload trace");
-      assert(persisted.events.some((entry) => entry.actorType === "human" && entry.channel === "janus" && entry.body === message && entry.visibility === "private"));
-      assert(persisted.runs?.some((run) => run.id === turnId && run.message === message));
-      observed.push(message);
-    }),
+    investigatorFactory: factory(
+      async ({ organizationId, caseId }, message, turnId) => {
+        const persisted = (await fixture.store.getCase(caseId))!;
+        assert.equal(organizationId, "notion");
+        assert.equal(message, "Check the private upload trace");
+        assert(
+          persisted.events.some(
+            (entry) =>
+              entry.actorType === "human" &&
+              entry.channel === "janus" &&
+              entry.body === message &&
+              entry.visibility === "private",
+          ),
+        );
+        assert(
+          persisted.runs?.some(
+            (run) => run.id === turnId && run.message === message,
+          ),
+        );
+        observed.push(message);
+      },
+    ),
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
   assert(address && typeof address !== "string");
   const request = async (route: string, body?: unknown) => {
-    const response = await fetch(`http://127.0.0.1:${address.port}${route}`, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return { status: response.status, data: await response.json() as any };
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}${route}`,
+      body === undefined
+        ? {}
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+    );
+    return { status: response.status, data: (await response.json()) as any };
   };
   try {
     const item = newCase();
     await fixture.store.createCase(item);
-    for (const body of [{ organizationId: "ramp", text: "Cannot read this case" }, { organizationId: "outsider", text: "Cannot impersonate a participant" }]) {
-      assert.equal((await request(`/api/cases/${item.id}/messages`, body)).status, 403);
+    for (const body of [
+      { organizationId: "ramp", text: "Cannot read this case" },
+      { organizationId: "outsider", text: "Cannot impersonate a participant" },
+    ]) {
+      assert.equal(
+        (await request(`/api/cases/${item.id}/messages`, body)).status,
+        403,
+      );
     }
-    assert.equal((await request(`/api/cases/${item.id}/messages`, { organizationId: "notion", text: "   " })).status, 400);
+    assert.equal(
+      (
+        await request(`/api/cases/${item.id}/messages`, {
+          organizationId: "notion",
+          text: "   ",
+        })
+      ).status,
+      400,
+    );
     assert.deepEqual(await fixture.store.getCase(item.id), item);
     const outsiderCase = newCase({ customerId: "outsider", vendorId: "aws" });
     await fixture.store.createCase(outsiderCase);
-    assert.equal((await request(`/api/cases/${outsiderCase.id}/messages`, { organizationId: "outsider", text: "No membership" })).status, 403);
-    assert.deepEqual(await fixture.store.getCase(outsiderCase.id), outsiderCase);
-    const guided = (await fixture.store.getCase("JAN-1042"))!;
-    assert.equal((await request(`/api/cases/${guided.id}/messages`, { organizationId: "notion", text: "Do not persist" })).status, 409);
-    await assert.rejects(app.locals.investigations.enqueueHuman(guided.id, "notion", "Do not persist", "Notion team"), /guided replay/);
-    assert.deepEqual(await fixture.store.getCase(guided.id), guided);
-    const queued = await request(`/api/cases/${item.id}/messages`, { organizationId: "notion", text: "  Check the private upload trace  " });
+    assert.equal(
+      (
+        await request(`/api/cases/${outsiderCase.id}/messages`, {
+          organizationId: "outsider",
+          text: "No membership",
+        })
+      ).status,
+      403,
+    );
+    assert.deepEqual(
+      await fixture.store.getCase(outsiderCase.id),
+      outsiderCase,
+    );
+    const queued = await request(`/api/cases/${item.id}/messages`, {
+      organizationId: "notion",
+      text: "  Check the private upload trace  ",
+    });
     assert.equal(queued.status, 202);
     assert.equal(queued.data.queued, true);
-    await until(async () => (await fixture.store.getCase(item.id))?.runs?.[0]?.status === "completed");
+    await until(
+      async () =>
+        (await fixture.store.getCase(item.id))?.runs?.[0]?.status ===
+        "completed",
+    );
     const completed = (await fixture.store.getCase(item.id))!;
-    const conversation = completed.events.filter((entry) => entry.channel === "janus");
+    const conversation = completed.events.filter(
+      (entry) => entry.channel === "janus",
+    );
     assert.equal(conversation.length, 2);
-    assert.deepEqual(conversation.map((entry) => entry.actorType), ["human", "agent"]);
+    assert.deepEqual(
+      conversation.map((entry) => entry.actorType),
+      ["human", "agent"],
+    );
     assert.equal(conversation[0].actor, "Notion team");
-    assert.equal(conversation[1].body, "Test investigator completed its tool calls");
-    assert(conversation.every((entry) => entry.type === "message" && entry.visibility === "private"));
+    assert.equal(
+      conversation[1].body,
+      "Test investigator completed its tool calls",
+    );
+    assert(
+      conversation.every(
+        (entry) => entry.type === "message" && entry.visibility === "private",
+      ),
+    );
     assert.deepEqual(observed, ["Check the private upload trace"]);
-    const vendor = (await request("/api/state?organizationId=aws")).data.cases.find((entry: any) => entry.id === item.id);
+    const vendor = (
+      await request("/api/state?organizationId=aws")
+    ).data.cases.find((entry: any) => entry.id === item.id);
     assert(!vendor.events.some((entry: any) => entry.channel === "janus"));
     assert.deepEqual(vendor.runs, []);
   } finally {
     app.locals.investigations.close();
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
     await fixture.cleanup();
   }
 });
 
-
 test("case creation can immediately enqueue an actual investigator for the selected vendor", async () => {
   const fixture = await temporaryStore();
   const observed: string[] = [];
-  const app = await createApp(fixture.store, { investigatorFactory: factory(async ({ organizationId }, message) => { observed.push(organizationId); assert.match(message, /Investigate this case/); }) });
+  const app = await createApp(fixture.store, {
+    investigatorFactory: factory(async ({ organizationId }, message) => {
+      observed.push(organizationId);
+      assert.match(message, /Investigate this case/);
+    }),
+  });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
   assert(address && typeof address !== "string");
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/cases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ organizationId: "aws", customerId: "ramp", vendorId: "aws", title: "Investigate attachment delay", startInvestigation: true }) });
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/cases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        organizationId: "aws",
+        customerId: "ramp",
+        vendorId: "aws",
+        title: "Investigate attachment delay",
+        startInvestigation: true,
+      }),
+    });
     assert.equal(response.status, 201);
-    const item = await response.json() as any;
+    const item = (await response.json()) as any;
     assert.equal(item.runs[0].organizationId, "aws");
-    await until(async () => (await fixture.store.getCase(item.id))?.runs?.[0]?.status === "completed");
+    await until(
+      async () =>
+        (await fixture.store.getCase(item.id))?.runs?.[0]?.status ===
+        "completed",
+    );
     assert.deepEqual(observed, ["aws"]);
   } finally {
     app.locals.investigations.close();
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    await fixture.cleanup();
+  }
+});
+
+test("seeded Ramp chat uses a real conversational worker without changing guided approvals or progress", async () => {
+  const fixture = await temporaryStore();
+  const original = (await fixture.store.getCase("JAN-1043"))!;
+  const app = await createApp(fixture.store, {
+    investigatorFactory: factory(
+      async ({ conversationOnly, sharedReply, tools }) => {
+        assert.equal(conversationOnly, true);
+        assert.equal(sharedReply, false);
+        const visible = (await tools.readCase()) as any;
+        assert.equal(visible.case.customerId, "ramp");
+        await assert.rejects(
+          tools.requestAction({
+            connectorId: "demo-customer",
+            operation: "replay_exports",
+            input: {},
+            title: "Unauthorized conversational change",
+            description: "Must not change recovery",
+          }),
+          /preserve/,
+        );
+        await assert.rejects(
+          tools.concludeInvestigation({
+            status: "resolved",
+            summary: "No fresh verification",
+            evidenceIds: [],
+          }),
+          /preserve/,
+        );
+      },
+    ),
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  try {
+    const unavailable = await fetch(
+      `http://127.0.0.1:${address.port}/api/cases/${original.id}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: "ramp",
+          target: "case",
+          text: "Needs both Relay identities",
+        }),
+      },
+    );
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(await fixture.store.getCase(original.id), original);
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/cases/${original.id}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: "ramp",
+          text: "What does this approval do?",
+        }),
+      },
+    );
+    assert.equal(response.status, 202);
+    await until(
+      async () =>
+        (await fixture.store.getCase(original.id))?.runs?.[0]?.status ===
+        "completed",
+    );
+    const updated = (await fixture.store.getCase(original.id))!;
+    assert.equal(updated.step, original.step);
+    assert.equal(updated.status, original.status);
+    assert.deepEqual(updated.approvals, original.approvals);
+    assert.deepEqual(updated.demoService, original.demoService);
+    assert.deepEqual(updated.evidence, original.evidence);
+    const human = updated.events.find(
+      (entry) => entry.body === "What does this approval do?",
+    )!;
+    assert.equal(human.actorType, "human");
+    assert.equal(human.actorId, "local-demo");
+    assert.equal(human.visibility, "private");
+    assert.equal(human.recipientOrganizationId, "ramp");
+    const api = await fetch(
+      `http://127.0.0.1:${address.port}/api/cases/${original.id}/approvals/${original.approvals[0].id}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "approved" }),
+      },
+    );
+    assert.equal(api.status, 200);
+    const continued = await fetch(
+      `http://127.0.0.1:${address.port}/api/cases/${original.id}/advance`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: "ramp" }),
+      },
+    );
+    assert.equal(continued.status, 200);
+    assert.equal(((await continued.json()) as any).status, "resolved");
+  } finally {
+    app.locals.investigations.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await fixture.cleanup();
+  }
+});
+
+test("partner and room messages use Relay, preserve human identity, and queue recipients once even when receipt wins the race", async () => {
+  const fixture = await temporaryStore();
+  const sent: any[] = [];
+  const replies: string[] = [];
+  const app = await createApp(fixture.store, {
+    investigatorFactory: factory(
+      async ({ organizationId, conversationOnly, sharedReply }) => {
+        assert(conversationOnly);
+        assert(sharedReply);
+        replies.push(organizationId);
+      },
+    ),
+    relaySender: async (input) => {
+      sent.push(input);
+      const receipt = {
+        ...input,
+        messageId: `message-${sent.length}`,
+        deliveryId: `message-${sent.length}`,
+        createdAt: new Date().toISOString(),
+      };
+      await app.locals.investigations.acceptMessage(receipt);
+      await app.locals.investigations.acceptMessage(receipt);
+      return { messageId: receipt.messageId, createdAt: receipt.createdAt };
+    },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const post = async (body: unknown) =>
+    fetch(`http://127.0.0.1:${address.port}/api/cases/JAN-1044/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  try {
+    const original = (await fixture.store.getCase("JAN-1044"))!;
+    assert.equal(
+      (
+        await post({
+          organizationId: "ramp",
+          recipientOrganizationId: "notion",
+          text: "No access",
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await post({
+          organizationId: "ramp",
+          actor: "AWS owner",
+          text: "Cannot forge",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await post({
+          organizationId: "ramp",
+          target: "case",
+          recipientOrganizationId: "aws",
+          text: "Ambiguous",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(sent.length, 0);
+    assert.deepEqual(await fixture.store.getCase(original.id), original);
+    assert.equal(
+      (
+        await post({
+          organizationId: "ramp",
+          recipientOrganizationId: "aws",
+          text: "Can AWS explain the route change?",
+        })
+      ).status,
+      202,
+    );
+    await until(
+      async () =>
+        (await fixture.store.getCase(original.id))?.runs?.[0]?.status ===
+        "completed",
+    );
+    let updated = (await fixture.store.getCase(original.id))!;
+    assert.equal(
+      updated.events.filter((entry) => entry.id === "relay:message-1").length,
+      1,
+    );
+    assert.equal(updated.runs?.length, 1);
+    assert.equal(updated.runs?.[0].organizationId, "aws");
+    assert.equal(sent[0].actorType, "human");
+    assert.equal(sent[0].actor, "Ramp team");
+    assert.equal(sent[0].actorId, "local-demo");
+    assert.equal(sent[0].from, "ramp");
+    assert.equal(sent[0].to, "aws");
+    assert.equal(
+      (
+        await post({
+          organizationId: "ramp",
+          target: "case",
+          text: "Please summarize for everyone",
+        })
+      ).status,
+      202,
+    );
+    await until(
+      async () =>
+        (await fixture.store.getCase(original.id))?.runs?.length === 3 &&
+        (await fixture.store.getCase(original.id))!.runs!.every(
+          (run) => run.status === "completed",
+        ),
+    );
+    updated = (await fixture.store.getCase(original.id))!;
+    assert.equal(
+      updated.events.filter((entry) => entry.id === "relay:message-2").length,
+      1,
+    );
+    assert.equal(
+      updated.events.find((entry) => entry.id === "relay:message-2")!.target,
+      "case",
+    );
+    assert.deepEqual(replies.sort(), ["aws", "aws", "ramp"]);
+    assert(
+      updated.events
+        .filter((entry) => entry.title === "Agent reply")
+        .every((entry) => entry.visibility === "shared"),
+    );
+    assert.equal(updated.step, original.step);
+    assert.equal(updated.status, original.status);
+    assert.deepEqual(updated.approvals, original.approvals);
+  } finally {
+    app.locals.investigations.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await fixture.cleanup();
+  }
+});
+
+test("a failed Relay send leaves the shared human message and own turn uncommitted", async () => {
+  const fixture = await temporaryStore();
+  const original = (await fixture.store.getCase("JAN-1044"))!;
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async () => {
+      throw new Error("Must not run");
+    }),
+    async () => {
+      throw new Error("Provider temporarily unavailable");
+    },
+  );
+  try {
+    await assert.rejects(
+      service.enqueueHuman(
+        original.id,
+        "ramp",
+        "Message everyone",
+        "Ramp team",
+        { target: "case" },
+      ),
+      /Provider temporarily unavailable/,
+    );
+    assert.deepEqual(await fixture.store.getCase(original.id), original);
+  } finally {
+    service.close();
+    await fixture.cleanup();
+  }
+});
+
+test("legacy agent receipt events do not enqueue a second turn when their old run has no sourceEventId", async () => {
+  const fixture = await temporaryStore();
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async () => {
+      throw new Error("Legacy receipt must not execute");
+    }),
+  );
+  try {
+    const item = newCase();
+    item.events.push({
+      id: "relay:legacy-message",
+      type: "message",
+      organizationId: "aws",
+      actor: "AWS Support",
+      title: "Partner message received",
+      body: "Previously handled",
+      visibility: "shared",
+      createdAt: item.createdAt,
+    });
+    item.runs = [
+      {
+        id: "legacy-turn",
+        organizationId: "notion",
+        message: "Previously handled",
+        status: "completed",
+        createdAt: item.createdAt,
+      },
+    ];
+    await fixture.store.createCase(item);
+    await service.acceptMessage({
+      caseId: item.id,
+      eventId: "legacy-event",
+      from: "aws",
+      to: "notion",
+      text: "Previously handled",
+      messageId: "legacy-message",
+      deliveryId: "redelivery",
+    });
+    const after = await fixture.store.getCase(item.id);
+    assert.deepEqual(after?.runs, item.runs);
+    assert.deepEqual(after?.events, item.events);
+    assert.equal(after?.status, item.status);
+  } finally {
+    service.close();
+    await fixture.cleanup();
+  }
+});
+
+test("receive tool reads only delivered partner messages without provider calls or extra turns", async () => {
+  const fixture = await temporaryStore();
+  const originalFetch = globalThis.fetch;
+  let reads = 0;
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async ({ tools }) => {
+      const first = (await tools.receivePartnerMessages()) as any[];
+      const second = (await tools.receivePartnerMessages()) as any[];
+      assert.deepEqual(second, first);
+      assert.deepEqual(
+        first.map((entry) => entry.messageId),
+        ["received-1"],
+      );
+      assert.equal(first[0].from, "aws");
+      assert.equal(first[0].text, "Authenticated partner response");
+      reads += 2;
+    }),
+  );
+  try {
+    const item = newCase();
+    item.events.push(
+      {
+        id: "seed:correspondence",
+        type: "message",
+        channel: "relay",
+        organizationId: "aws",
+        actor: "AWS",
+        title: "Illustrative history",
+        body: "Not an actual delivery",
+        visibility: "shared",
+        createdAt: item.createdAt,
+      },
+      {
+        id: "relay:private",
+        type: "message",
+        organizationId: "aws",
+        actor: "AWS",
+        title: "Internal",
+        body: "Private evidence",
+        visibility: "private",
+        createdAt: item.createdAt,
+      },
+      {
+        id: "relay:own",
+        type: "message",
+        organizationId: "notion",
+        actor: "Notion",
+        title: "Own message",
+        body: "Outgoing",
+        visibility: "shared",
+        createdAt: item.createdAt,
+      },
+    );
+    await fixture.store.createCase(item);
+    globalThis.fetch = async () => {
+      throw new Error("Unexpected network read");
+    };
+    await service.acceptMessage({
+      caseId: item.id,
+      eventId: "event-1",
+      from: "aws",
+      to: "notion",
+      text: "Authenticated partner response",
+      messageId: "received-1",
+      deliveryId: "received-1",
+    });
+    await until(
+      async () =>
+        (await fixture.store.getCase(item.id))?.runs?.[0]?.status ===
+        "completed",
+    );
+    assert.equal(reads, 2);
+    assert.equal((await fixture.store.getCase(item.id))?.runs?.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    service.close();
+    await fixture.cleanup();
+  }
+});
+
+test("single worker selects the oldest pending turn across cases", async () => {
+  const fixture = await temporaryStore();
+  const observed: string[] = [];
+  const service = new InvestigationService(
+    fixture.store,
+    factory(async (_options, message) => {
+      observed.push(message);
+    }),
+  );
+  try {
+    const older = newCase({ customerId: "ramp", vendorId: "aws" });
+    older.runs = [
+      {
+        id: "older",
+        organizationId: "ramp",
+        message: "older chat",
+        status: "pending",
+        createdAt: "2026-10-31T22:20:29.000Z",
+      },
+    ];
+    await fixture.store.createCase(older);
+    const firstInStore = newCase();
+    firstInStore.runs = [
+      {
+        id: "newer-1",
+        organizationId: "aws",
+        message: "newer followup",
+        status: "pending",
+        createdAt: "2026-10-31T22:20:37.000Z",
+      },
+      {
+        id: "newer-2",
+        organizationId: "notion",
+        message: "latest followup",
+        status: "pending",
+        createdAt: "2026-10-31T22:20:40.000Z",
+      },
+    ];
+    await fixture.store.createCase(firstInStore);
+    assert.equal((await fixture.store.listCases())[0].id, firstInStore.id);
+    await service.recover();
+    await until(
+      async () =>
+        (await fixture.store.getCase(firstInStore.id))?.runs?.every(
+          (run) => run.status === "completed",
+        ) === true,
+    );
+    assert.deepEqual(observed, [
+      "older chat",
+      "newer followup",
+      "latest followup",
+    ]);
+  } finally {
+    service.close();
     await fixture.cleanup();
   }
 });

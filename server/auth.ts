@@ -4,6 +4,7 @@ import { liveMode, supabaseAdmin, HttpError } from "./config";
 export interface Identity {
   userId: string;
   organizationIds: string[];
+  displayName?: string;
 }
 
 export async function authenticate(
@@ -31,9 +32,11 @@ export async function authenticate(
       .select("organization_id")
       .eq("user_id", data.user.id);
     if (memberships.error) throw memberships.error;
+    const profileName = data.user.user_metadata?.full_name || data.user.user_metadata?.name;
     res.locals.identity = {
       userId: data.user.id,
       organizationIds: memberships.data.map((row) => row.organization_id),
+      displayName: typeof profileName === "string" && profileName.trim() ? profileName.trim() : undefined,
     } satisfies Identity;
     next();
   } catch (error) {
